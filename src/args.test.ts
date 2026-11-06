@@ -53,6 +53,11 @@ describe("parseCliArgs", () => {
     assert.equal(parseCliArgs(["--help"]).help, true);
   });
 
+  it("parses --verbose", () => {
+    assert.equal(parseCliArgs([]).verbose, false);
+    assert.equal(parseCliArgs(["--verbose"]).verbose, true);
+  });
+
   it("expands --fail-on categories from repeated and comma-separated values", () => {
     assert.deepEqual(parseCliArgs([]).failOn, []);
     assert.deepEqual(parseCliArgs(["--fail-on", "strong-copyleft,restricted"]).failOn, [

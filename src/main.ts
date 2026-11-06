@@ -49,7 +49,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     }
 
     const env = detectEnv(io.stderr, io.env, { noColor: args.noColor, noSpinner: args.noSpinner });
-    reporter = new ConsoleReporter(io.stderr, env, { quiet: args.quiet });
+    reporter = new ConsoleReporter(io.stderr, env, { quiet: args.quiet, verbose: args.verbose });
 
     const interactive = io.stdin.isTTY === true && env.hero;
     const prompt: PromptIO | undefined = interactive

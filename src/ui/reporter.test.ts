@@ -112,6 +112,24 @@ describe("ConsoleReporter banner", () => {
   });
 });
 
+describe("ConsoleReporter notes", () => {
+  const data = { ...summary };
+
+  it("shows notes in the summary only with verbose", () => {
+    const quietNotes = capture();
+    const plain = new ConsoleReporter(quietNotes.out, base);
+    plain.note("hidden detail");
+    plain.summary(data);
+    assert.doesNotMatch(quietNotes.text(), /hidden detail/);
+
+    const verbose = capture();
+    const reporter = new ConsoleReporter(verbose.out, base, { verbose: true });
+    reporter.note("shown detail");
+    reporter.summary(data);
+    assert.match(verbose.text(), /ℹ shown detail/);
+  });
+});
+
 describe("ConsoleReporter summary", () => {
   it("lists packages that need license review, capped, with a count of the rest", () => {
     const { out, text } = capture();

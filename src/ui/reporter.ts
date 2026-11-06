@@ -31,6 +31,8 @@ export interface Reporter {
   banner(version: string): Promise<void>;
   step(label: string): Step;
   warn(message: string): void;
+  /** Extra information, shown in the summary only with --verbose. */
+  note(message: string): void;
   /** Runs an interactive action with any animation paused. */
   suspend<T>(action: () => Promise<T>): Promise<T>;
   summary(data: SummaryData): void;
@@ -43,6 +45,7 @@ export interface WritableLike {
 
 export interface ReporterOptions {
   quiet?: boolean;
+  verbose?: boolean;
   /** Pause between hero rows when animating (ms). */
   revealDelayMs?: number;
 }
@@ -54,6 +57,7 @@ export class ConsoleReporter implements Reporter {
   readonly style: Style;
   readonly symbols: Symbols;
   private readonly warnings: string[] = [];
+  private readonly notes: string[] = [];
   private active: AnimatedStep | undefined;
 
   constructor(
@@ -94,6 +98,12 @@ export class ConsoleReporter implements Reporter {
 
   warn(message: string): void {
     this.warnings.push(message);
+  }
+
+  note(message: string): void {
+    if (this.options.verbose) {
+      this.notes.push(message);
+    }
   }
 
   async suspend<T>(action: () => Promise<T>): Promise<T> {
@@ -161,6 +171,12 @@ export class ConsoleReporter implements Reporter {
       lines.push("");
       for (const warning of this.warnings) {
         lines.push(`  ${style.yellow(symbols.warn)} ${warning}`);
+      }
+    }
+    if (this.notes.length > 0) {
+      lines.push("");
+      for (const note of this.notes) {
+        lines.push(`  ${style.dim(`${symbols.info} ${note}`)}`);
       }
     }
     lines.push("");

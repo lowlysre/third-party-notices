@@ -16,6 +16,7 @@ export interface Args {
   omitVersions: boolean;
   noColor: boolean;
   quiet: boolean;
+  verbose: boolean;
   help: boolean;
   version: boolean;
 }
@@ -38,6 +39,7 @@ const OPTIONS = {
   "omit-versions": { type: "boolean" },
   "no-color": { type: "boolean" },
   quiet: { type: "boolean", short: "q" },
+  verbose: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
 } as const satisfies Record<string, OptionSpec>;
@@ -135,6 +137,7 @@ export function parseCliArgs(argv: string[]): Args {
     omitVersions: values["omit-versions"] === true,
     noColor: values["no-color"] === true,
     quiet: values.quiet === true,
+    verbose: values.verbose === true,
     help: values.help === true,
     version: values.version === true,
   };
@@ -153,6 +156,7 @@ export function helpText(style: Style, columns: number): string {
     ["    --omit-versions", 'list "pkg" instead of "pkg@1.2.3"'],
     ["    --no-color", "disable colors (also honors NO_COLOR)"],
     ["-q, --quiet", "print nothing except errors"],
+    ["    --verbose", "show extra notes, such as packages that ship no license file"],
     ["-v, --version", "print the version"],
     ["-h, --help", "show this help"],
   ];

@@ -3,7 +3,33 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { CliError } from "../errors.js";
 import { installPackage, link, tempDir, writeFiles } from "../testing/fixtures.js";
-import { resolveDependencies } from "./tree.js";
+import { repositoryUrl, resolveDependencies } from "./tree.js";
+
+describe("repositoryUrl", () => {
+  it("normalizes npm repository forms to web URLs", () => {
+    const expected = "https://github.com/acme/tool";
+    for (const value of [
+      "git+https://github.com/acme/tool.git",
+      "git://github.com/acme/tool.git",
+      "https://github.com/acme/tool",
+      "git@github.com:acme/tool.git",
+      "ssh://git@github.com/acme/tool.git",
+      "github:acme/tool",
+      "acme/tool",
+      { type: "git", url: "git+https://github.com/acme/tool.git#main" },
+    ]) {
+      assert.equal(repositoryUrl(value), expected, JSON.stringify(value));
+    }
+    assert.equal(repositoryUrl("gitlab:acme/tool"), "https://gitlab.com/acme/tool");
+    assert.equal(repositoryUrl("bitbucket:acme/tool"), "https://bitbucket.org/acme/tool");
+  });
+
+  it("returns undefined for unusable values", () => {
+    for (const value of [undefined, null, 42, "", "  ", {}, { url: 5 }, "not a url", "file:../local"]) {
+      assert.equal(repositoryUrl(value), undefined, JSON.stringify(value));
+    }
+  });
+});
 
 const names = (result: { packages: Array<{ name: string; version: string }> }): string[] =>
   result.packages.map((pkg) => `${pkg.name}@${pkg.version}`);

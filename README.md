@@ -57,6 +57,7 @@ The short alias `tpn` is installed alongside `third-party-notices`.
 | `--omit-versions` | List `name` instead of `name@version` |
 | `--no-color` | Disable colors |
 | `-q, --quiet` | Print only errors |
+| `--verbose` | Show extra notes, such as packages that declare a license but ship no license file |
 | `-v, --version` | Print the version |
 | `-h, --help` | Show help |
 

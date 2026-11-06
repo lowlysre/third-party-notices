@@ -16,19 +16,20 @@ function harness(cwd: string, withPrompt = false) {
   const stderr = capture();
   const stdout = capture();
   const tty = fakeIo();
-  const reporter = new ConsoleReporter(stderr.out, env);
   return {
     stderr: stderr.text,
     stdout: stdout.text,
     tty,
-    exec: (argv: string[]) =>
-      run(parseCliArgs(argv), {
+    exec: (argv: string[]) => {
+      const args = parseCliArgs(argv);
+      return run(args, {
         cwd,
         version: "1.2.3",
-        reporter,
+        reporter: new ConsoleReporter(stderr.out, env, { verbose: args.verbose }),
         stdout: stdout.out,
         prompt: withPrompt ? tty.io : undefined,
-      }),
+      });
+    },
   };
 }
 
@@ -215,11 +216,15 @@ describe("run: interactive license prompts", () => {
       },
     });
     const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--eol", "lf"]);
+    const pending = h.exec(["-o", "-", "--eol", "lf", "--verbose"]);
     await script(h.tty.input, h.tty.output, [[HOW, "\u001b[B\u001b[B\r"]]);
     await pending;
     assert.match(h.stdout(), /Copyright \(c\) Ada Lovelace/);
     assert.match(h.stderr(), /generated from an SPDX template/);
+    assert.match(
+      h.stderr(),
+      /bare@1\.0\.0 declares MIT but ships no license file; consider asking the maintainers to add one \(https:\/\/example\.com\)/,
+    );
     assert.match(h.tty.output(), /declares MIT/);
   });
 
@@ -229,9 +234,43 @@ describe("run: interactive license prompts", () => {
     const pending = h.exec(["-o", "-", "--eol", "lf"]);
     await script(h.tty.input, h.tty.output, [[HOW, "\u001b"]]);
     await pending;
-    assert.match(h.stderr(), /Skipped bare@1\.0\.0: no license text/);
+    assert.match(h.stderr(), /▲ Skipped bare@1\.0\.0: no license text/);
+    assert.doesNotMatch(h.stderr(), /ships no license file/, "maintainer notes are verbose-only");
     assert.match(h.tty.output(), /declares Proprietary/);
     assert.doesNotMatch(h.stdout(), /bare@1\.0\.0\n/);
+  });
+
+  it("adds a maintainer note for skipped packages with --verbose", async (t) => {
+    const root = await bareProject(t, "Proprietary");
+    const h = harness(root, true);
+    const pending = h.exec(["-o", "-", "--verbose"]);
+    await script(h.tty.input, h.tty.output, [[HOW, "\u001b"]]);
+    await pending;
+    assert.match(
+      h.stderr(),
+      /ℹ bare@1\.0\.0 declares Proprietary but ships no license file; consider asking the maintainers to add one/,
+    );
+  });
+
+  it("points at the repository and handles a missing license field in the verbose note", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { quiet: "1" } } });
+    await writeFiles(root, {
+      "node_modules/quiet/package.json": {
+        name: "quiet",
+        version: "1.0.0",
+        repository: { type: "git", url: "git+https://github.com/acme/quiet.git" },
+      },
+    });
+    const h = harness(root, true);
+    const pending = h.exec(["-o", "-", "--verbose"]);
+    await script(h.tty.input, h.tty.output, [[HOW, "\u001b"]]);
+    await pending;
+    assert.match(
+      h.stderr(),
+      /declares no license and ships no license file; consider asking the maintainers to add one \(https:\/\/github\.com\/acme\/quiet\)/,
+    );
+    assert.match(h.tty.output(), /no license field/);
   });
 
   it("accepts pasted text and retries after an empty paste", async (t) => {

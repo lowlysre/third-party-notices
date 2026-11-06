@@ -99,13 +99,15 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
       throw unresolvedError(unresolved);
     }
     for (const pkg of unresolved) {
+      const label = `${pkg.name}@${pkg.version}`;
       const answer = await reporter.suspend(() => askForLicense(prompt, pkg));
       if (answer === undefined) {
-        reporter.warn(`Skipped ${pkg.name}@${pkg.version}: no license text`);
+        reporter.warn(`Skipped ${label}: no license text`);
       } else {
         licensed.push({ name: pkg.name, version: pkg.version, text: answer.text, notices: [] });
-        if (answer.generated) generated.push(`${pkg.name}@${pkg.version}`);
+        if (answer.generated) generated.push(label);
       }
+      reporter.note(`${label} ${missingFileNote(pkg)}`);
     }
   }
   for (const label of generated) {
@@ -198,6 +200,19 @@ async function readAppendix(file: string): Promise<string> {
   return readText(file);
 }
 
+function contactUrl(pkg: ResolvedPackage): string | undefined {
+  return pkg.homepage ?? pkg.repository;
+}
+
+/** "declares MIT but ships no license file; consider asking the maintainers to add one (url)" */
+function missingFileNote(pkg: ResolvedPackage): string {
+  const url = contactUrl(pkg);
+  const state = pkg.license
+    ? `declares ${pkg.license} but ships no license file`
+    : "declares no license and ships no license file";
+  return `${state}; consider asking the maintainers to add one${url ? ` (${url})` : ""}`;
+}
+
 function unresolvedError(unresolved: ResolvedPackage[]): CliError {
   const shown = unresolved
     .slice(0, 10)
@@ -206,7 +221,7 @@ function unresolvedError(unresolved: ResolvedPackage[]): CliError {
   return new CliError(
     `No license text found for ${unresolved.length} package${unresolved.length === 1 ? "" : "s"}:\n${[...shown, ...more].join("\n")}`,
     {
-      hint: 'supply the text with "replace" in the config file, exclude the package, or run without --ci to be prompted',
+      hint: 'supply the text with "replace" in the config file, exclude the package, run without --ci to be prompted, or ask the maintainers to ship a license file',
     },
   );
 }
@@ -218,7 +233,7 @@ async function askForLicense(io: PromptIO, pkg: ResolvedPackage): Promise<Answer
   output.write(
     `\n${style.yellow(symbols.warn)} ${style.bold(`No license text found for ${pkg.name}@${pkg.version}`)}\n`,
   );
-  const details = [pkg.license ? `declares ${pkg.license}` : "no license field", pkg.homepage]
+  const details = [pkg.license ? `declares ${pkg.license}` : "no license field", contactUrl(pkg)]
     .filter(Boolean)
     .join(` ${symbols.bullet} `);
   output.write(`  ${style.dim(details)}\n\n`);

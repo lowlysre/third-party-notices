@@ -10,6 +10,8 @@ export interface ResolvedPackage {
   /** Declared SPDX-ish license expression, when present. */
   license: string | undefined;
   homepage: string | undefined;
+  /** Web URL of the source repository, when declared. */
+  repository: string | undefined;
   author: string | undefined;
 }
 
@@ -25,6 +27,7 @@ interface PackageJson {
   license?: unknown;
   licenses?: unknown;
   homepage?: unknown;
+  repository?: unknown;
   author?: unknown;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
@@ -93,6 +96,7 @@ export async function resolveDependencies(inputs: string[]): Promise<ResolveResu
           dir,
           license: declaredLicense(json),
           homepage: typeof json.homepage === "string" ? json.homepage : undefined,
+          repository: repositoryUrl(json.repository),
           author: authorName(json.author),
         });
       }
@@ -170,6 +174,27 @@ export function declaredLicense(json: PackageJson): string | undefined {
     return all.length > 0 ? all.join(" OR ") : undefined;
   }
   return pick(json.license) ?? pick(json.licenses);
+}
+
+/** Turns npm's repository forms (git+https, git://, github:user/repo, user/repo) into a web URL. */
+export function repositoryUrl(value: unknown): string | undefined {
+  const raw = typeof value === "string" ? value : (value as { url?: unknown } | null)?.url;
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return undefined;
+  }
+  const text = raw.trim();
+  const shorthand = /^(?:(github|gitlab|bitbucket):)?([\w.-]+\/[\w.-]+)$/.exec(text);
+  if (shorthand) {
+    const host = { github: "github.com", gitlab: "gitlab.com", bitbucket: "bitbucket.org" }[shorthand[1] ?? "github"];
+    return `https://${host}/${shorthand[2]}`;
+  }
+  const cleaned = text
+    .replace(/^git\+/, "")
+    .replace(/^git:\/\//, "https://")
+    .replace(/^ssh:\/\/git@/, "https://")
+    .replace(/^git@([^:]+):/, "https://$1/")
+    .replace(/\.git(?:#.*)?$/, "");
+  return /^https?:\/\//.test(cleaned) ? cleaned : undefined;
 }
 
 function authorName(author: unknown): string | undefined {
