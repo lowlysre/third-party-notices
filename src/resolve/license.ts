@@ -21,7 +21,7 @@ const CODE_EXTENSIONS = new Set([
   ".png",
   ".svg",
 ]);
-const LICENSE_NAME = /^(licen[sc]e|copying|unlicen[sc]e)(?<rest>[-_. ].*)?$/i;
+const LICENSE_NAME = /^(?:[a-z0-9]+[-_.])?(licen[sc]e|copying|unlicen[sc]e)(?<rest>[-_. ].*)?$/i;
 const NOTICE_NAME = /^notice(?<rest>[-_. ].*)?$/i;
 
 function extensionOf(name: string): string {
@@ -31,8 +31,8 @@ function extensionOf(name: string): string {
 
 function rank(name: string): number {
   const lower = name.toLowerCase();
-  if (lower.startsWith("licen")) return 0;
-  if (lower.startsWith("copying")) return 1;
+  if (/licen[sc]e/.test(lower)) return 0;
+  if (lower.includes("copying")) return 1;
   return 2;
 }
 

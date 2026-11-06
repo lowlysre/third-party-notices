@@ -12,6 +12,9 @@ describe("license file names", () => {
       "license.md",
       "LICENSE.txt",
       "LICENSE-MIT",
+      "MIT-LICENSE",
+      "MIT-LICENSE.txt",
+      "apache_license.md",
       "COPYING",
       "COPYING.LESSER",
       "UNLICENSE",
@@ -21,7 +24,14 @@ describe("license file names", () => {
   });
 
   it("rejects code and unrelated files", () => {
-    for (const name of ["license.js", "license-checker.json", "licenser.txt", "README.md", "index.js"]) {
+    for (const name of [
+      "license.js",
+      "license-checker.json",
+      "licenser.txt",
+      "sublicense.txt",
+      "README.md",
+      "index.js",
+    ]) {
       assert.equal(isLicenseFileName(name), false, name);
     }
   });

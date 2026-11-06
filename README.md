@@ -133,7 +133,7 @@ For each input `package.json`, the tool walks `dependencies` and `optionalDepend
 For each package, the first match wins:
 
 1. A `replace` entry from the config.
-2. License files in the package root (`LICENSE`, `LICENCE`, `COPYING`, `UNLICENSE`, with common suffixes and extensions) plus files in a `licenses/` directory. Distinct texts are joined.
+2. License files in the package root (`LICENSE`, `LICENCE`, `COPYING`, `UNLICENSE`, with common suffixes, extensions, and one prefix word such as `MIT-LICENSE`) plus files in a `licenses/` directory. Distinct texts are joined.
 3. Nothing found: the package needs attention.
 
 With `--ci`, or when there's no terminal, the run fails after listing every package without text. On a terminal, you're prompted per package to provide a file path, paste the text (end with a line containing only `.`), use a bundled SPDX template (`MIT`, `ISC`, `BSD-2-Clause`, `BSD-3-Clause`, `0BSD`, with the copyright line taken from the package author), or skip it. Template-generated text is flagged for review in the summary.

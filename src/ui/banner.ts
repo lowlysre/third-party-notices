@@ -37,14 +37,7 @@ export function renderBanner(style: Style, options: BannerOptions): string[] {
   const gradient = [style.cyan, style.cyan, style.blue, style.blue, style.magenta, style.magenta];
   const artWidth = Math.max(...art.map((line) => line.length));
 
-  const side = [
-    "",
-    title,
-    style.dim("A tiny license notice CLI"),
-    style.dim("for your npm dependencies."),
-    "",
-    "",
-  ];
+  const side = ["", title, style.dim("A tiny license notice CLI"), style.dim("for your npm dependencies."), "", ""];
   return art.map((line, index) => {
     const paint = gradient[index] ?? style.magenta;
     const text = side[index] ?? "";
