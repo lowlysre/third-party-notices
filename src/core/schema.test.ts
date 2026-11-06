@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { CliError } from "../errors.js";
 import { validateConfig } from "./schema.js";
 
-const base = join("C:", "base");
+const base = resolve("base");
 
 describe("validateConfig", () => {
   it("accepts a full config and resolves paths against the base directory", () => {

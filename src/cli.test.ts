@@ -9,11 +9,14 @@ import { installPackage, tempDir, writeFiles } from "./testing/fixtures.js";
 // End-to-end through the real entry point: exit codes and which stream gets what.
 const CLI = fileURLToPath(new URL("./cli.js", import.meta.url));
 
+// A clean environment: no color or CI settings inherited from the machine running the tests.
+const { NO_COLOR, FORCE_COLOR, CI, ...cleanEnv } = process.env;
+
 function cli(cwd: string, args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       cwd,
-      env: { ...process.env, NO_COLOR: "", FORCE_COLOR: "", CI: "" },
+      env: cleanEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";

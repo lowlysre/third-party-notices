@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { emptyConfig } from "./schema.js";
 import { type Overrides, resolveSettings } from "./settings.js";
 
-const cwd = join("C:", "work");
+const cwd = resolve("work");
 const none: Overrides = {
   inputs: [],
   output: undefined,
