@@ -26,6 +26,7 @@ function renderGroup({ dependencies, text, notices }: LicenseGroup): string {
 /** The notice document: a header, then each section split by a separator line. */
 export function renderDocument({ groups, appended, lineEnding }: RenderInput): string {
   const sections = [...groups.map(renderGroup), ...appended.map((text) => normalizeEol(text).trim())];
-  const body = [HEADER, sections.join(`\n\n${SEPARATOR}\n\n`)].filter(Boolean).join("\n\n");
+  if (sections.length === 0) return "";
+  const body = [HEADER, sections.join(`\n\n${SEPARATOR}\n\n`)].join("\n\n");
   return lineEnding === "crlf" ? `${body}\n`.replace(/\n/g, "\r\n") : `${body}\n`;
 }

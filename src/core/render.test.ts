@@ -63,8 +63,8 @@ describe("renderDocument", () => {
     );
   });
 
-  it("is just the header when there is nothing to list", () => {
-    assert.equal(renderDocument({ groups: [], appended: [], lineEnding: "lf" }), `${HEADER.join("\n")}\n`);
+  it("is empty when there is nothing to list", () => {
+    assert.equal(renderDocument({ groups: [], appended: [], lineEnding: "lf" }), "");
   });
 
   it("converts every line ending for crlf", () => {

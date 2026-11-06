@@ -44,7 +44,7 @@ Two options turn the review into a gate. `--fail-on <categories>` (or `failOn` i
 
 ## Output format
 
-The document opens with a one-line credit header, then lists each group of packages followed by their shared license text, with `NOTICE` files appended under "With the following notices:". Groups and packages are sorted, so the same input produces the same bytes on every OS for a given `--eol`.
+The document opens with a one-line credit header, then lists each group of packages followed by their shared license text, with `NOTICE` files appended under "With the following notices:". A project with nothing to list gets an empty file, without the header. Groups and packages are sorted, so the same input produces the same bytes on every OS for a given `--eol`.
 
 ```text
 The following npm packages may be included in this product:
