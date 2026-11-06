@@ -65,8 +65,6 @@ Precedence is command line, then config file, then defaults. Exit codes: `0` suc
 
 - [Configuration](docs/configuration.md): config files, keys, `append`, `replace`, and `exclude`.
 - [How it works](docs/how-it-works.md): dependency resolution, license file detection, and the output format.
-- [Terminal behavior](docs/terminal.md): streams, colors, the hero banner, prompts, and environment variables.
-- [Migrating from generate-license-file](docs/migrating.md)
 - [Development](docs/development.md): building, testing, CI, and releases.
 
 ## License
