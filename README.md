@@ -74,9 +74,9 @@ Run `tpn --help` for the rest, or see the [command line reference](docs/cli.md) 
 
 ## Acknowledgments
 
-This project stands on two others, and it would not exist without them.
+This project stands on two others, and it would not exist without them. 🤝
 
 - [generate-license-file](https://github.com/TobyAndToby/generate-license-file) by Toby Bessant and Toby Smith (ISC). It defined the problem and the shape of the solution: the command line options, the config keys, and the output document layout all follow its design. It's the tool to reach for if you want a library API or need YAML and JSON5 configs. No code from it is included here.
-- [Licensee](https://github.com/licensee/licensee) by Ben Balter and contributors (MIT). It's the library behind GitHub's license detection. The license file name rules in `src/resolve/names.ts` are a TypeScript port of its file name scoring, so the files GitHub recognizes as a license are the files found here. That part is derived from its code, which is why its MIT notice is in [NOTICE](NOTICE).
+- [Licensee](https://github.com/licensee/licensee) by Ben Balter and contributors (MIT). It's the library behind GitHub's license detection. The license file name rules in `src/core/names.ts` are a TypeScript port of its file name scoring, so the files GitHub recognizes as a license are the files found here. That part is derived from its code, which is why its MIT notice is in [NOTICE](NOTICE).
 
-Thank you to both teams.
+Thank you to both teams. 💚
