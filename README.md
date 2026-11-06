@@ -33,16 +33,16 @@ Example run on a terminal:
 
 ## Why notices matter
 
-Most open source licenses ask for very little in return: keep the copyright notice and the license text with the software. MIT, ISC, and the BSD licenses make that a condition whenever you distribute the code to others, and Apache-2.0 adds that any NOTICE file travels with it. Bundle a few hundred npm packages into a web app, a container image, or a CLI, and each one of those texts is owed to someone, which almost nobody has the time to collect by hand.
+MIT, ISC, and the BSD licenses all ask for the same thing: if you distribute the software, include its copyright notice and license text. Apache-2.0 also requires carrying along any NOTICE file. A web app or container image with a few hundred npm packages in it owes a few hundred of those texts, and almost nobody wants to collect them by hand.
 
-That gap is where compliance quietly fails. Attribution is the credit maintainers get for work they gave away, so a missing notice breaks the license and the spirit it was written in. Making the notice file one repeatable command is what keeps compliance going: because the step takes seconds, it runs on every release, and the notice stays current as your dependencies change. This isn't legal advice, and license terms differ, so read the ones you depend on.
+Notices are also how maintainers get credited for work they gave away. This tool makes producing the notice one command, cheap enough to run on every release, so it stays current as your dependencies change. This isn't legal advice, so read the terms of the licenses you depend on.
 
 ## Highlights
 
-- No dependencies of its own. Installing it adds one package, so there's nothing extra to audit, update, or attribute.
-- Finds every license the way GitHub does. It follows Node's resolution through hoisted, nested, pnpm, and workspace layouts, reads `LICENSE`, `COPYING`, `NOTICE`, `LICENSES/`, and the rest of Licensee's conventions, and lists packages that share a text once.
-- Flags what needs a look and handles the gaps. Copyleft, restricted-use, and unclear licenses show up in the summary, `--fail-on` makes them a CI gate, and missing license files can be prompted for, templated, or skipped.
-- Looks good in a terminal and behaves in a pipeline. You get a banner, a spinner, and a license chart on a TTY, plain output in CI, and the document alone on stdout with `-o -`.
+- No dependencies of its own. Installing it adds one package, so there's nothing extra to audit or update.
+- Finds licenses the way GitHub does. It follows Node's resolution through hoisted, nested, pnpm, and workspace layouts, reads `LICENSE`, `COPYING`, `NOTICE`, `LICENSES/`, and the rest of Licensee's conventions, and lists packages that share a text once.
+- Flags copyleft, restricted-use, and unclear licenses in the summary, and `--fail-on` makes them a CI gate. Packages with no license file can be prompted for, templated, or skipped.
+- A terminal UI with a banner, spinner, and license chart. Output is plain in CI, and `-o -` writes the document alone to stdout.
 
 ## Usage
 
