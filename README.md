@@ -44,9 +44,6 @@ That gap is where compliance quietly fails. Attribution is the credit maintainer
 - Flags what needs a look and handles the gaps. Copyleft, restricted-use, and unclear licenses show up in the summary, `--fail-on` makes them a CI gate, and missing license files can be prompted for, templated, or skipped.
 - Looks good in a terminal and behaves in a pipeline. You get a banner, a spinner, and a license chart on a TTY, plain output in CI, and the document alone on stdout with `-o -`.
 
-> [!NOTE]
-> The package isn't published to npm yet. Until it is, build from source (see [Development](docs/development.md)).
-
 ## Usage
 
 Run it from a project that has its dependencies installed.
