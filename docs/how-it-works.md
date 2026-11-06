@@ -38,7 +38,7 @@ A notice file only covers attribution. After writing it, the tool checks each pa
 | `restricted` | `BUSL-*`, `Elastic-*`, `PolyForm-*`, `CC-BY-NC-*`, `CC-BY-ND-*`, `Commons-Clause`, `JSON` |
 | `unclear` | `UNLICENSED`, `NONE`, `UNKNOWN`, `SEE LICENSE IN ...`, `LicenseRef-*`, a missing field, or text that isn't a valid SPDX expression |
 
-SPDX expressions are evaluated: `MIT OR GPL-3.0-only` is not flagged because you can take the MIT option, while `MIT AND GPL-3.0-only` is flagged as strong copyleft because both apply. The declared field is what's checked, not the license file's text.
+SPDX expressions are evaluated: `MIT OR GPL-3.0-only` is not flagged because you can take the MIT option, while `MIT AND GPL-3.0-only` is flagged as strong copyleft because both apply. The declared field is what's checked, not the license file's text. A well-formed id that isn't in the lists above, such as `Proprietary`, isn't flagged, because there's no bundled SPDX catalog to check it against.
 
 Two options turn the review into a gate. `--fail-on <categories>` (or `failOn` in the config) makes the run exit 1 after writing the file when a package falls in a listed category. Categories can be named individually, or use `copyleft` for the three copyleft categories and `any` for all of them. `allow` in the config leaves specific packages out of the review once you've accepted them.
 
