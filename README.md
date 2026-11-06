@@ -59,31 +59,22 @@ npx third-party-notices
 npx third-party-notices -i app/package.json lib/package.json -o NOTICE.txt
 ```
 
-The short alias `tpn` is installed alongside `third-party-notices`.
+The short alias `tpn` is installed alongside `third-party-notices`. The options you'll use most:
 
 | Option | Description |
 | --- | --- |
-| `-i, --input <paths...>` | `package.json` files (or directories containing one) to scan. Default: `./package.json` |
-| `-o, --output <path>` | Output file. `-` writes the document to stdout. Default: `./third-party-licenses.txt` |
-| `-c, --config <path>` | Config file. Auto-detected when omitted |
-| `--overwrite` | Replace an existing output file without asking |
-| `--eol <lf\|crlf>` | Line endings of the output. Default: the OS default |
+| `-i, --input <paths...>` | `package.json` files to scan. Default: `./package.json` |
+| `-o, --output <path>` | Output file, or `-` for stdout. Default: `./third-party-licenses.txt` |
 | `--ci` | Never prompt. Exit 1 if a license text is missing |
-| `--allow-missing` | Don't prompt or fail for packages with no license text: use a bundled SPDX template where one fits, otherwise skip with a warning |
-| `--fail-on <categories>` | Exit 1 if a package falls in these [license review](docs/how-it-works.md#license-review) categories. Comma-separated, repeatable |
-| `--no-spinner` | Disable the animated spinner |
-| `--omit-versions` | List `name` instead of `name@version` |
-| `--no-color` | Disable colors |
-| `-q, --quiet` | Print only errors |
-| `--verbose` | Show extra notes, such as packages that declare a license but ship no license file |
-| `-v, --version` | Print the version |
-| `-h, --help` | Show help |
+| `--allow-missing` | Use a template or skip packages with no license text instead of failing |
+| `--fail-on <categories>` | Exit 1 if a package falls in these [license review](docs/how-it-works.md#license-review) categories |
 
-Precedence is command line, then config file, then defaults. Exit codes: `0` success, `1` runtime failure or `--ci` found a package without license text, `2` usage error, `130` cancelled with Ctrl-C.
+Run `tpn --help` for the rest, or see the [command line reference](docs/cli.md) for every option, exit code, and environment variable.
 
 ## Docs
 
-- [Configuration](docs/configuration.md): config files, keys, `append`, `replace`, and `exclude`.
+- [Command line reference](docs/cli.md): every option, exit code, and environment variable.
+- [Configuration](docs/configuration.md): config files and keys.
 - [How it works](docs/how-it-works.md): dependency resolution, license file detection, and the output format.
 - [Development](docs/development.md): building, testing, CI, and releases.
 
