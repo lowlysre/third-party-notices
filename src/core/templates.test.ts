@@ -15,6 +15,7 @@ describe("templates", () => {
       assert.match(renderTemplate(id, "Ada Lovelace"), /Copyright \(c\) Ada Lovelace/, id);
     }
     assert.match(renderTemplate("ISC", undefined), /the package authors/);
+    assert.match(renderTemplate("MIT", "Ada $& Co"), /Copyright \(c\) Ada \$& Co/);
   });
 
   it("refuses ids without a template", () => {

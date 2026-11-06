@@ -213,6 +213,16 @@ describe("run: --allow-missing", () => {
     assert.match(h.stderr(), /Skipped opaque@1\.0\.0/);
     assert.equal(h.tty.output(), "");
   });
+
+  it("keeps NOTICE files found for a package whose license text is filled in", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { noted: "1" } } });
+    await installPackage(root, "noted", { license: "ISC", files: { NOTICE: "Attribution required" } });
+    const h = harness(root);
+    await h.exec(["--allow-missing", "-o", "-", "--eol", "lf"]);
+    assert.match(h.stdout(), /ISC License/);
+    assert.match(h.stdout(), /Attribution required/);
+  });
 });
 
 describe("run: license review", () => {

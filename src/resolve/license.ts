@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { compare } from "../core/compare.js";
@@ -12,29 +13,29 @@ export interface LicenseInfo {
   notices: string[];
 }
 
-const distinct = (texts: readonly string[]): string[] => [...new Set(texts.map((text) => text.trim()).filter(Boolean))];
+const distinct = (texts: readonly string[]): string[] => [
+  ...new Set(texts.map((text) => text.replace(/\r\n?/g, "\n").trim()).filter(Boolean)),
+];
 const byRank = (a: string, b: string): number => (licenseRank(a) ?? 0) - (licenseRank(b) ?? 0) || compare(a, b);
+const filesNamed = (entries: readonly Dirent[], keep: (name: string) => boolean) =>
+  entries.filter((entry) => !entry.isDirectory() && keep(entry.name)).map((entry) => entry.name);
+const readAll = (dir: string, files: readonly string[]) => Promise.all(files.map((file) => readText(join(dir, file))));
+const readNotices = async (dir: string, entries: readonly Dirent[]) =>
+  distinct(await readAll(dir, filesNamed(entries, isNoticeFileName).sort(compare)));
 
 /** License text from the package's license files (best match first, duplicates merged) and NOTICE files. */
 export async function readLicense(dir: string): Promise<LicenseInfo> {
   const entries = await readdir(dir, { withFileTypes: true });
-  const named = (keep: (name: string) => boolean) =>
-    entries.filter((entry) => !entry.isDirectory() && keep(entry.name)).map((entry) => entry.name);
-
-  const rootFiles = named(isLicenseFileName).sort(byRank);
-  const noticeFiles = named(isNoticeFileName).sort(compare);
+  const rootFiles = filesNamed(entries, isLicenseFileName).sort(byRank);
   const nestedFiles: string[] = [];
   for (const folder of entries.filter((entry) => entry.isDirectory() && /^licen[sc]es$/i.test(entry.name))) {
     const inner = await readdir(join(dir, folder.name), { withFileTypes: true });
-    const names = inner
-      .filter((entry) => !entry.isDirectory() && isLicensesDirFile(entry.name))
-      .map((entry) => entry.name);
-    nestedFiles.push(...names.sort(compare).map((name) => join(folder.name, name)));
+    const names = filesNamed(inner, isLicensesDirFile).sort(compare);
+    nestedFiles.push(...names.map((name) => join(folder.name, name)));
   }
 
-  const read = (files: readonly string[]) => Promise.all(files.map((file) => readText(join(dir, file))));
-  const text = distinct(await read([...rootFiles, ...nestedFiles])).join("\n\n");
-  return { text: text || undefined, notices: distinct(await read(noticeFiles)) };
+  const text = distinct(await readAll(dir, [...rootFiles, ...nestedFiles])).join("\n\n");
+  return { text: text || undefined, notices: await readNotices(dir, entries) };
 }
 
 /** The `replace` file from the config when there is one, else the package's own license files. */
@@ -42,7 +43,13 @@ export async function licenseFor(
   pkg: ResolvedPackage,
   replace: Readonly<Record<string, string>>,
 ): Promise<LicenseInfo> {
-  const replacement = replace[packageLabel(pkg)] ?? replace[pkg.name];
+  const own = (key: string) => (Object.hasOwn(replace, key) ? replace[key] : undefined);
+  const replacement = own(packageLabel(pkg)) ?? own(pkg.name);
   if (replacement === undefined) return readLicense(pkg.dir);
-  return { text: await readExisting(replacement, `Replacement license for ${pkg.name}`), notices: [] };
+  const text = (await readExisting(replacement, `Replacement license for ${pkg.name}`)).trim();
+  // A replacement swaps the license text only; the package's NOTICE files still apply.
+  return {
+    text: text || undefined,
+    notices: await readNotices(pkg.dir, await readdir(pkg.dir, { withFileTypes: true })),
+  };
 }

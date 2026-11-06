@@ -37,6 +37,6 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org). Squa
 | `feat!: …`, or a `BREAKING CHANGE:` footer | major |
 | `docs:`, `chore:`, `test:`, `refactor:`, `ci:` | none |
 
-A release tags the commit, publishes to npm with trusted publishing (no npm token is stored), and creates a GitHub release with notes generated from the commits. The first release is `1.0.0`. To start at `0.x`, push a `v0.1.0` tag on the first commit before merging.
+A release tags the commit, publishes to npm with trusted publishing (no npm token is stored), and creates a GitHub release with notes generated from the commits. The `v0.0.0` baseline tag on the initial commit makes the first `feat:` release `0.1.0`.
 
 The publish job runs in the `npm` environment, whose name and the workflow file name `release.yml` must match the trusted publisher configured on npmjs.com.

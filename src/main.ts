@@ -50,7 +50,9 @@ export async function main(argv: string[], io: Io): Promise<number> {
     reporter = new ConsoleReporter(io.stderr, env, { quiet: args.quiet, verbose: args.verbose });
     const { style, symbols } = reporter.term;
     const prompt: PromptIO | undefined =
-      io.stdin.isTTY && env.hero ? { input: io.stdin, output: io.stderr, style, symbols } : undefined;
+      io.stdin.isTTY && env.hero
+        ? { input: io.stdin, output: io.stderr, style, symbols, columns: env.columns }
+        : undefined;
 
     await run(args, { cwd: io.cwd, version, reporter, stdout: io.stdout, prompt });
     return 0;

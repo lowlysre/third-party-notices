@@ -48,6 +48,25 @@ describe("select", () => {
     await assert.rejects(result, CancelledError);
     assert.ok(output().endsWith("\u001b[?25h"));
   });
+  it("rejects when the input ends and restores the terminal", async () => {
+    const { io, input, output, rawModes } = fakeIo();
+    const result = select(io, "Pick", choices);
+    await tick();
+    input.end();
+    await assert.rejects(result, CancelledError);
+    assert.deepEqual(rawModes, [true, false]);
+    assert.ok(output().endsWith("\u001b[?25h"));
+  });
+
+  it("moves up over every physical row when lines wrap", async () => {
+    const { io, input, output } = fakeIo();
+    const result = select({ ...io, columns: 10 }, "A long question", choices);
+    await tick();
+    input.write("\r");
+    await result;
+    // 1 question row wrapping onto 2, plus 3 choices of 1 row each ("  > Three" is 10 columns).
+    assert.ok(output().includes("\u001b[5A"), "cursor moved up 5 rows");
+  });
 });
 
 describe("text prompts", () => {

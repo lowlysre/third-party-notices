@@ -21,8 +21,10 @@ export class AnimatedStep implements Step {
   private timer: NodeJS.Timeout | undefined;
   private done = false;
   private readonly startedAt = Date.now();
-  // Safety net: never leave the cursor hidden if the process exits mid-step.
+  // Safety net: never leave the cursor hidden if the process ends mid-step.
   private readonly restoreCursor = () => this.timer && this.write(cursor.show);
+  // Node's default SIGINT/SIGTERM handling skips the "exit" event, so exit explicitly.
+  private readonly onSignal = (signal: NodeJS.Signals) => process.exit(signal === "SIGINT" ? 130 : 143);
 
   constructor(
     private readonly term: Terminal,
@@ -66,6 +68,8 @@ export class AnimatedStep implements Step {
     if (!this.term.env.animate) return;
     this.write(cursor.hide);
     process.once("exit", this.restoreCursor);
+    process.once("SIGINT", this.onSignal);
+    process.once("SIGTERM", this.onSignal);
     this.draw();
     this.timer = setInterval(() => this.draw(), FRAME_MS);
     this.timer.unref();
@@ -78,6 +82,8 @@ export class AnimatedStep implements Step {
       this.write(cursor.clearLine + cursor.show);
     }
     process.removeListener("exit", this.restoreCursor);
+    process.removeListener("SIGINT", this.onSignal);
+    process.removeListener("SIGTERM", this.onSignal);
   }
 
   private finish(marker: string, detail?: string): void {
@@ -95,8 +101,8 @@ export class AnimatedStep implements Step {
   private draw(): void {
     const { style, symbols, env } = this.term;
     const glyph = symbols.spinner[this.frame++ % symbols.spinner.length] ?? "";
-    const room = Math.max(10, env.columns - this.label.length - 8);
-    const detail = this.detail ? ` ${style.dim(truncate(this.detail, room))}` : "";
+    const room = env.columns - this.label.length - 6;
+    const detail = this.detail && room > 1 ? ` ${style.dim(truncate(this.detail, room, symbols.ellipsis))}` : "";
     this.write(`${cursor.clearLine}  ${style.cyan(glyph)} ${this.label}${detail}`);
   }
 

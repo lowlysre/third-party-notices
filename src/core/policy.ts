@@ -44,7 +44,8 @@ export function expandCategories(values: readonly string[]): Category[] | undefi
   const result = new Set<Category>();
   for (const value of values.map((raw) => raw.trim().toLowerCase()).filter(Boolean)) {
     const expanded =
-      GROUPS[value] ?? ((CATEGORIES as readonly string[]).includes(value) ? [value as Category] : undefined);
+      (Object.hasOwn(GROUPS, value) ? GROUPS[value] : undefined) ??
+      ((CATEGORIES as readonly string[]).includes(value) ? [value as Category] : undefined);
     if (!expanded) return undefined;
     for (const category of expanded) result.add(category);
   }
@@ -79,6 +80,9 @@ function classifyId(rawId: string, hasException: boolean): Outcome {
 
 class ParseError extends Error {}
 
+/** Tokens that can't be a license id or an exception name. */
+const RESERVED = ["(", ")", "AND", "OR", "WITH"];
+
 /** Evaluates an SPDX expression: `OR` takes the mildest alternative, `AND` the most severe. */
 function evaluate(expression: string): Outcome {
   const tokens = expression.match(/\(|\)|[^\s()]+/g) ?? [];
@@ -107,16 +111,17 @@ function evaluate(expression: string): Outcome {
 
   const parseTerm = (): Outcome => {
     const token = tokens[position++];
-    if (token === undefined || [")", "AND", "OR", "WITH"].includes(token.toUpperCase())) throw new ParseError();
     if (token === "(") {
       const inner = parseOr();
       if (tokens[position++] !== ")") throw new ParseError();
       return inner;
     }
+    if (token === undefined || RESERVED.includes(token.toUpperCase())) throw new ParseError();
     let hasException = false;
     if (peek() === "WITH") {
       position++;
-      if (tokens[position++] === undefined) throw new ParseError();
+      const exception = tokens[position++];
+      if (exception === undefined || RESERVED.includes(exception.toUpperCase())) throw new ParseError();
       hasException = true;
     }
     return classifyId(token, hasException);

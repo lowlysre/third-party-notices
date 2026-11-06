@@ -130,7 +130,7 @@ export function templateIdFor(expression: string | undefined): string | undefine
 export function renderTemplate(id: string, holder: string | undefined): string {
   const template = TEMPLATES[id];
   if (!template) throw new Error(`No bundled template for ${id}`);
-  return template.replace("{holder}", holder ?? "the package authors");
+  return template.replace("{holder}", () => holder ?? "the package authors");
 }
 
 /** License text for a declared license that has a bundled template, else undefined. */

@@ -26,8 +26,12 @@ function edgesOf(manifest: Manifest, from: string, requester: string, includePee
   const edge =
     (optional: boolean) =>
     (name: string): Edge => ({ name, from, requester, optional });
+  // npm lets an optional declaration override a required one of the same name.
+  const required = names(manifest.dependencies).filter(
+    (name) => !Object.hasOwn(manifest.optionalDependencies ?? {}, name),
+  );
   return [
-    ...names(manifest.dependencies).map(edge(false)),
+    ...required.map(edge(false)),
     ...names(manifest.optionalDependencies).map(edge(true)),
     ...(includePeers ? names(manifest.peerDependencies).map(edge(true)) : []),
   ];

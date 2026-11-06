@@ -1,6 +1,6 @@
 import { createInterface, emitKeypressEvents, type Key } from "node:readline";
 import { CancelledError } from "../errors.js";
-import { cursor, type Style } from "./ansi.js";
+import { cursor, type Style, visibleLength } from "./ansi.js";
 import type { Symbols } from "./symbols.js";
 
 export interface PromptInput {
@@ -16,6 +16,8 @@ export interface PromptIO {
   output: { write(chunk: string): unknown };
   style: Style;
   symbols: Symbols;
+  /** Terminal width, used to count the rows a wrapped line occupies. Defaults to no wrapping. */
+  columns?: number;
 }
 
 export interface Choice<T> {
@@ -36,10 +38,11 @@ export function select<T>(
   choices: Array<Choice<T>>,
   options: SelectOptions<T> = {},
 ): Promise<T> {
-  const { input, output, style, symbols } = io;
+  const { input, output, style, symbols, columns = Number.POSITIVE_INFINITY } = io;
   return new Promise<T>((resolve, reject) => {
     let index = 0;
     let rendered = 0;
+    let settled = false;
 
     const draw = (): void => {
       const lines = [
@@ -53,11 +56,15 @@ export function select<T>(
         }),
       ];
       output.write(`${cursor.up(rendered)}${cursor.clearDown}${lines.join("\n")}\n`);
-      rendered = lines.length;
+      rendered = lines.reduce((rows, line) => rows + Math.max(1, Math.ceil(visibleLength(line) / columns)), 0);
     };
 
     const finish = (done: () => void, summary?: string): void => {
+      if (settled) return;
+      settled = true;
       input.removeListener("keypress", onKey);
+      input.removeListener("end", onEnd);
+      input.removeListener("close", onEnd);
       input.setRawMode?.(false);
       input.pause();
       output.write(cursor.up(rendered) + cursor.clearDown + cursor.show);
@@ -66,6 +73,8 @@ export function select<T>(
       }
       done();
     };
+
+    const onEnd = (): void => finish(() => reject(new CancelledError()));
 
     const onKey = (text: string | undefined, key: Key | undefined): void => {
       const name = key?.name;
@@ -93,6 +102,8 @@ export function select<T>(
     input.resume();
     output.write(cursor.hide);
     input.on("keypress", onKey);
+    input.on("end", onEnd);
+    input.on("close", onEnd);
     draw();
   });
 }

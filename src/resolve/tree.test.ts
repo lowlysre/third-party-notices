@@ -54,6 +54,14 @@ describe("resolveDependencies", () => {
     );
   });
 
+  it("lets an optional declaration override a required one of the same name", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, {
+      "package.json": { name: "app", dependencies: { native: "1" }, optionalDependencies: { native: "1" } },
+    });
+    assert.deepEqual(labels(await resolveApp(root)), []);
+  });
+
   it("includes installed peers of dependencies, but not the input's own peers", async (t) => {
     const root = await tempDir(t);
     await writeFiles(root, { "package.json": { name: "app", dependencies: { a: "1" }, peerDependencies: { p: "1" } } });

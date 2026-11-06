@@ -67,6 +67,8 @@ describe("parseCliArgs", () => {
     assert.throws(() => parseCliArgs(["--eol", "cr"]), /Invalid --eol/);
     assert.throws(() => parseCliArgs(["-o"]), /requires a value/);
     assert.throws(() => parseCliArgs(["--ci=yes"]), /does not take a value/);
+    assert.throws(() => parseCliArgs(["--fail-on", "copyleft", "--fail-on"]), UsageError);
+    assert.throws(() => parseCliArgs(["--input", "a", "--input"]), UsageError);
     assert.throws(() => parseCliArgs(["stray"]), /Unexpected argument/);
     assert.throws(
       () => parseCliArgs(["--fail-on", "nope"]),

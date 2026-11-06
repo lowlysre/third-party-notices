@@ -143,7 +143,7 @@ export function parseCliArgs(argv: readonly string[]): Args {
 
   for (const { name, type } of OPTIONS) {
     const value = values[name];
-    if (value !== undefined && typeof (Array.isArray(value) ? value[0] : value) !== type) {
+    if (value !== undefined && [value].flat().some((item) => typeof item !== type)) {
       throw new UsageError(`--${name} ${type === "string" ? "requires a value" : "does not take a value"}`);
     }
   }

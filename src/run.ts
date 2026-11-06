@@ -59,6 +59,12 @@ async function findPackages(settings: Settings, step: Step): Promise<ResolvedPac
   return kept;
 }
 
+/** A package with no license text, plus any NOTICE files already read for it. */
+interface Unresolved {
+  pkg: ResolvedPackage;
+  notices: string[];
+}
+
 async function readLicenses(packages: readonly ResolvedPackage[], settings: Settings, step: Step) {
   let done = 0;
   const infos = await mapPool(packages, READ_CONCURRENCY, async (pkg) => {
@@ -67,10 +73,10 @@ async function readLicenses(packages: readonly ResolvedPackage[], settings: Sett
     return info;
   });
   const licensed: LicensedPackage[] = [];
-  const unresolved: ResolvedPackage[] = [];
+  const unresolved: Unresolved[] = [];
   for (const [index, { text, notices }] of infos.entries()) {
     const pkg = packages[index] as ResolvedPackage;
-    if (text === undefined) unresolved.push(pkg);
+    if (text === undefined) unresolved.push({ pkg, notices });
     else licensed.push({ name: pkg.name, version: pkg.version, text, notices });
   }
   step.succeed(unresolved.length > 0 ? `${unresolved.length} need attention` : `${packages.length} read`);
@@ -85,7 +91,7 @@ function templateFallback(pkg: ResolvedPackage): LicenseChoice {
 
 /** Fills in packages with no license text: automatically with `allowMissing`, by prompting on a terminal, else fails. */
 async function fillMissing(
-  unresolved: readonly ResolvedPackage[],
+  unresolved: readonly Unresolved[],
   settings: Settings,
   prompt: PromptIO | undefined,
   reporter: Reporter,
@@ -94,15 +100,15 @@ async function fillMissing(
   const decide = settings.allowMissing
     ? async (pkg: ResolvedPackage) => templateFallback(pkg)
     : prompt && ((pkg: ResolvedPackage) => reporter.suspend(() => askForLicense(prompt, pkg)));
-  if (!decide) throw unresolvedError(unresolved);
+  if (!decide) throw unresolvedError(unresolved.map(({ pkg }) => pkg));
 
   const licensed: LicensedPackage[] = [];
-  for (const pkg of unresolved) {
+  for (const { pkg, notices } of unresolved) {
     const choice = await decide(pkg);
     if (!choice) {
       reporter.warn(`Skipped ${packageLabel(pkg)}: no license text`);
     } else {
-      licensed.push({ name: pkg.name, version: pkg.version, text: choice.text, notices: [] });
+      licensed.push({ name: pkg.name, version: pkg.version, text: choice.text, notices });
       if (choice.generated) {
         reporter.warn(`${packageLabel(pkg)}: license text generated from an SPDX template, please review`);
       }

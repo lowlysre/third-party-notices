@@ -58,6 +58,8 @@ describe("reviewLicense", () => {
       "(MIT",
       "OR MIT",
       "MIT WITH",
+      "MIT WITH )",
+      "GPL-3.0-only WITH AND",
     ]) {
       assert.equal(category(license), "unclear", license);
     }
@@ -90,6 +92,7 @@ describe("expandCategories", () => {
 
   it("returns undefined for an unknown name", () => {
     assert.equal(expandCategories(["nope"]), undefined);
+    assert.equal(expandCategories(["constructor"]), undefined);
     assert.ok(CATEGORY_CHOICES.includes("copyleft"));
   });
 });

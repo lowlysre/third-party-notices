@@ -48,6 +48,12 @@ describe("readLicense", () => {
     );
   });
 
+  it("merges the same text saved with different line endings", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, { LICENSE: "line one\nline two\n", COPYING: "line one\r\nline two\r\n" });
+    assert.equal((await readLicense(dir)).text, "line one\nline two");
+  });
+
   it("reports nothing when no license is shipped", async (t) => {
     const dir = await tempDir(t);
     await writeFiles(dir, { "index.js": "", "license.js": "code" });
@@ -74,6 +80,25 @@ describe("licenseFor", () => {
     assert.equal((await licenseFor(pkg(dir), { "p@1.2.3": exact, p: loose })).text, "by version");
     assert.equal((await licenseFor(pkg(dir), { p: loose })).text, "by name");
     assert.equal((await licenseFor(pkg(dir), {})).text, "own");
+  });
+
+  it("keeps the package's NOTICE files when a replacement supplies the text", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, { LICENSE: "own", NOTICE: "notice", "other.txt": "replacement" });
+    const info = await licenseFor(pkg(dir), { p: join(dir, "other.txt") });
+    assert.deepEqual(info, { text: "replacement", notices: ["notice"] });
+  });
+
+  it("ignores inherited object properties when looking up replacements", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, { LICENSE: "own" });
+    assert.equal((await licenseFor({ ...pkg(dir), name: "constructor" }, {})).text, "own");
+  });
+
+  it("treats a blank replacement file as missing text", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, { "blank.txt": "  \n" });
+    assert.equal((await licenseFor(pkg(dir), { p: join(dir, "blank.txt") })).text, undefined);
   });
 
   it("fails when the replacement file is missing", async (t) => {

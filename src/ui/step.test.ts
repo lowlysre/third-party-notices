@@ -58,6 +58,25 @@ describe("AnimatedStep with animation", () => {
     assert.match(stripAnsi(text()), /…/);
   });
 
+  it("keeps each frame narrower than the terminal, using ASCII ellipsis when needed", async () => {
+    const { out, text } = capture();
+    const term = createTerminal(out, { ...animated, unicode: false, columns: 30 });
+    const step = new AnimatedStep(term, "Reading licenses", () => {});
+    step.update("a-very-long-package-name");
+    await sleep(100);
+    step.stop();
+    const frames = stripAnsi(text())
+      .split("\r")
+      .flatMap((part) => part.split("\n"))
+      .filter((part) => part.includes("Reading"));
+    assert.ok(frames.length > 0);
+    assert.ok(
+      frames.every((frame) => frame.length < 30),
+      frames.join("|"),
+    );
+    assert.ok(frames.some((frame) => frame.includes("...")));
+  });
+
   it("stop clears the line without printing a result", async () => {
     const { step, text, ended } = start(animated);
     await sleep(100);
