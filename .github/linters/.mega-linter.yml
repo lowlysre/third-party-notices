@@ -5,9 +5,12 @@ ENABLE:
   - MARKDOWN
   - YAML
 DISABLE_LINTERS:
-  # Formatting and TypeScript linting are owned by Biome (npm run lint).
+  # Formatting and TypeScript linting are owned by Biome (npm run lint), which MegaLinter's
+  # bundled version can't read from .config/biome.json.
+  - JSON_BIOME
   - JSON_PRETTIER
   - YAML_PRETTIER
+  - MARKDOWN_MARKDOWN_TABLE_FORMATTER
   # Fetches remote schemas, which the hardened runner blocks.
   - JSON_V8R
   - YAML_V8R
