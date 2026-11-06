@@ -37,7 +37,7 @@ Most open source licenses ask for very little in return: keep the copyright noti
 
 That gap is where compliance quietly fails. Attribution is the credit maintainers get for work they gave away, so a missing notice breaks the license and the spirit it was written in. Making the notice file one repeatable command is what keeps compliance going: because the step takes seconds, it runs on every release, and the notice stays current as your dependencies change. This isn't legal advice, and license terms differ, so read the ones you depend on.
 
-## What it does
+## Highlights
 
 - No dependencies of its own. Installing it adds one package, so there's nothing extra to audit, update, or attribute.
 - Finds every license the way GitHub does. It follows Node's resolution through hoisted, nested, pnpm, and workspace layouts, reads `LICENSE`, `COPYING`, `NOTICE`, `LICENSES/`, and the rest of Licensee's conventions, and lists packages that share a text once.
