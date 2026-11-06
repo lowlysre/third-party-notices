@@ -8,28 +8,7 @@
 
 Zero-dependency CLI that generates a third-party license notice file for the production dependencies of npm projects.
 
-Example run on a terminal:
-
-```text
-████████╗██████╗ ███╗   ██╗
-╚══██╔══╝██╔══██╗████╗  ██║   third-party-notices v0.1.0
-   ██║   ██████╔╝██╔██╗ ██║   A tiny license notice CLI
-   ██║   ██╔═══╝ ██║╚██╗██║   for your npm dependencies.
-   ██║   ██║     ██║ ╚████║
-   ╚═╝   ╚═╝     ╚═╝  ╚═══╝
-
-  ✔ Resolving dependencies 214 packages (45ms)
-  ✔ Reading licenses 214 read (31ms)
-  ✔ Writing notices 31 unique licenses (6ms)
-
-  ✔ Wrote third-party-licenses.txt 412 KB · 96ms
-
-  214 packages · 31 unique license texts
-
-  MIT         ████████████████████████ 160
-  ISC         ██████ 38
-  Apache-2.0  ███ 16
-```
+![third-party-notices: a tiny license notice CLI for your npm dependencies](docs/assets/social-preview.png)
 
 ## Why notices matter
 
