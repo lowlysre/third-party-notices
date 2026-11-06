@@ -1,6 +1,9 @@
 # third-party-notices
 
 [![CI](https://github.com/lowlysre/third-party-notices/actions/workflows/ci.yml/badge.svg)](https://github.com/lowlysre/third-party-notices/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/third-party-notices?logo=npm)](https://www.npmjs.com/package/third-party-notices)
+[![npm downloads](https://img.shields.io/npm/dm/third-party-notices?logo=npm)](https://www.npmjs.com/package/third-party-notices)
+[![license: ISC](https://img.shields.io/npm/l/third-party-notices)](LICENSE)
 [![sustainable-npm](https://img.shields.io/badge/sustainable--npm-🌱-blue?style=flat)](https://github.com/lowlydba/sustainable-npm)
 
 Zero-dependency CLI that generates a third-party license notice file for the production dependencies of npm projects.
@@ -69,10 +72,6 @@ Precedence is command line, then config file, then defaults. Exit codes: `0` suc
 - [Configuration](docs/configuration.md): config files, keys, `append`, `replace`, and `exclude`.
 - [How it works](docs/how-it-works.md): dependency resolution, license file detection, and the output format.
 - [Development](docs/development.md): building, testing, CI, and releases.
-
-## License
-
-ISC, see [LICENSE](LICENSE). Credits and the license notices of the projects below are in [NOTICE](NOTICE).
 
 ## Acknowledgments
 
