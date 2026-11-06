@@ -1,0 +1,56 @@
+{
+  "name": "third-party-notices",
+  "version": "0.0.0-development",
+  "description": "Zero-dependency CLI that generates third-party license notice files for npm projects",
+  "keywords": [
+    "license",
+    "licenses",
+    "notices",
+    "third-party",
+    "attribution",
+    "cli"
+  ],
+  "license": "ISC",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lowlysre/third-party-notices.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "release": {
+    "branches": [
+      "main"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "third-party-notices": "dist/cli.js",
+    "tpn": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.js",
+    "!dist/testing",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p .config/tsconfig.json",
+    "typecheck": "tsc -p .config/tsconfig.json --noEmit",
+    "lint": "biome check --config-path=.config src",
+    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage --test-coverage-exclude=\"dist/**/*.test.js\" --test-coverage-exclude=\"dist/testing/**\" --test-coverage-lines=95 --test-coverage-branches=95 --test-coverage-functions=95 \"dist/**/*.test.js\"",
+    "pack:check": "node .github/scripts/pack-check.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.5",
+    "@types/node": "22.20.5",
+    "semantic-release": "25.0.9",
+    "typescript": "7.0.2"
+  }
+}
