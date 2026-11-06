@@ -18,7 +18,7 @@ npm run lint
 - `src/ui`: everything that draws to the terminal or reads keystrokes.
 - `src/run.ts` wires the three together, and `src/main.ts` turns the command line and environment into a run.
 
-Tool configs live in `.config/` (TypeScript and Biome), and CI helpers live under `.github/`. The README image is `docs/assets/social-preview.png`, rendered from the SVG beside it, and it doubles as the repository's social preview. Upload it under Settings, General, Social preview, since GitHub has no API for that.
+Tool configs live in `.config/` (TypeScript and Biome), and CI helpers live under `.github/`. The README banner is `docs/assets/readme-hero.png`, and `docs/assets/social-preview.png` (1280×640) is the repository's social preview. Each is rendered from the SVG beside it. Upload the social preview under Settings, General, Social preview, since GitHub has no API for that.
 
 ## CI
 

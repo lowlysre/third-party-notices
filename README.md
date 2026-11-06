@@ -6,13 +6,13 @@
 [![license: ISC](https://img.shields.io/npm/l/third-party-notices)](LICENSE)
 [![sustainable-npm](https://img.shields.io/badge/sustainable--npm-🌱-blue?style=flat)](https://github.com/lowlydba/sustainable-npm)
 
-Zero-dependency CLI that generates a third-party license notice file for the production dependencies of npm projects.
+<img src="docs/assets/readme-hero.png" alt="third-party-notices: a tiny license notice CLI for your npm dependencies" width="800">
 
-![third-party-notices: a tiny license notice CLI for your npm dependencies](docs/assets/social-preview.png)
+Zero-dependency CLI that generates a third-party license notice file for the production dependencies of npm projects.
 
 ## Why notices matter
 
-MIT, ISC, and the BSD licenses all ask for the same thing: if you distribute the software, include its copyright notice and license text. Apache-2.0 also requires carrying along any NOTICE file. A web app or container image with a few hundred npm packages in it owes a few hundred of those texts, and almost nobody wants to collect them by hand.
+MIT, ISC, and the BSD licenses all ask for the same thing: if you distribute the software, include its copyright notice and license text. Apache-2.0 also requires carrying along any NOTICE file. A web app or container image with a few hundred npm packages in it owes a few hundred of those texts, and almost nobody wants to (or does) collect them by hand.
 
 Notices are also how maintainers get credited for work they gave away. This tool makes producing the notice one command, cheap enough to run on every release, so it stays current as your dependencies change. This isn't legal advice, so read the terms of the licenses you depend on.
 
