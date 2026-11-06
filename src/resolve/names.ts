@@ -1,33 +1,52 @@
 /**
- * File name conventions for license files. Mirrors the patterns GitHub's licensee uses to
- * detect license files, so anything GitHub shows as a repository's license is found here too.
+ * File name conventions for license files, ported from GitHub's Licensee
+ * (lib/licensee/project_files/license_file.rb), MIT License,
+ * Copyright (c) Ben Balter and Licensee contributors. See NOTICE for the full text.
+ *
+ * Anything GitHub detects as a repository's license file is found here too, with two
+ * deliberate differences for npm packages: code, data and image extensions are never
+ * license text, and a dotted version number may follow the separator (LICENSE-2.0.txt).
  */
 
-interface Kind {
-  /** Lower ranks are written first. */
-  rank: number;
-  word: string;
-  /** Allows "<word>-<anything>" and "<anything>-<word>" forms (LICENSE-MIT, MIT-LICENSE). */
-  decorated: boolean;
-}
+const PREFERRED_EXT = "\\.(?:md|markdown|txt|html)";
+const LICENSE_EXT = "\\.(?!spdx|header)(?:[^./]|\\.\\d)+";
+const OTHER_EXT = "\\.(?!xml|sh|go|gemspec)(?:[^./]|\\.\\d)+";
+const ANY_EXT = "\\.(?:[^./]|\\.\\d)+";
 
-const KINDS: readonly Kind[] = [
-  { rank: 0, word: "(?:un)?licen[sc]e", decorated: true },
-  { rank: 1, word: "copying", decorated: true },
-  { rank: 2, word: "ofl", decorated: false },
-  { rank: 3, word: "copyright", decorated: true },
-  { rank: 4, word: "patents", decorated: false },
-];
+const LICENSE = "(?:un)?licen[sc]e";
+const COPYING = "copying";
+const COPYRIGHT = "copyright";
+const OFL = "ofl";
+const PATENTS = "patents";
 
-const EXTENSION = "(?:\\.[^./]+)*";
+/** Text between a separator and the extension: any non-dot characters, or ".<digit>" version parts. */
+const TAIL = "(?:[^.]|\\.\\d)*";
 
-const PATTERNS = KINDS.map(({ rank, word, decorated }) => ({
-  rank,
-  pattern: new RegExp(
-    decorated ? `^(?:[^.]*[-_])?(?:${word})(?:[-_][^.]*)?${EXTENSION}$` : `^(?:${word})${EXTENSION}$`,
-    "i",
-  ),
-}));
+/** Ordered best match first, the same order as Licensee's score table. */
+const RULES = [
+  `${LICENSE}`, // LICENSE
+  `${LICENSE}${PREFERRED_EXT}`, // LICENSE.md
+  `${COPYING}`, // COPYING
+  `${COPYING}${PREFERRED_EXT}`, // COPYING.md
+  `${LICENSE}${LICENSE_EXT}`, // LICENSE.textile
+  `${COPYING}${ANY_EXT}`, // COPYING.textile
+  `${LICENSE}[-_]${TAIL}(?:${OTHER_EXT})?`, // LICENSE-MIT
+  `${COPYING}[-_]${TAIL}(?:${OTHER_EXT})?`, // COPYING-MIT
+  `\\w+[-_]${LICENSE}${TAIL}(?:${OTHER_EXT})?`, // MIT-LICENSE
+  `\\w+[-_]${COPYING}${TAIL}(?:${OTHER_EXT})?`, // MIT-COPYING
+  `${OFL}${PREFERRED_EXT}`, // OFL.md
+  `${OFL}${OTHER_EXT}`, // OFL.textile
+  `${OFL}`, // OFL
+  `${COPYRIGHT}`, // COPYRIGHT
+  `${COPYRIGHT}${PREFERRED_EXT}`, // COPYRIGHT.txt
+  `${COPYRIGHT}${OTHER_EXT}`, // COPYRIGHT.textile
+  `${COPYRIGHT}[-_]${TAIL}(?:${OTHER_EXT})?`, // COPYRIGHT-MIT
+  `${PATENTS}`, // PATENTS
+  `${PATENTS}${OTHER_EXT}`, // PATENTS.txt
+].map((rule) => new RegExp(`^${rule}$`, "i"));
+
+/** Files inside a LICENSES directory (REUSE): an SPDX id or LicenseRef-* plus a text extension. */
+const REUSE_NAME = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.(?:md|markdown|txt|html)$/i;
 
 /** Extensions that are code, data or binary rather than license text. */
 const EXCLUDED_EXTENSIONS = new Set([
@@ -66,16 +85,22 @@ export function isReadableText(name: string): boolean {
   return !EXCLUDED_EXTENSIONS.has(extensionOf(name));
 }
 
-/** Rank of a license file name (0 is LICENSE-like), or undefined when it isn't one. */
+/** Rank of a license file name (0 is the best match), or undefined when it isn't one. */
 export function licenseRank(name: string): number | undefined {
   if (!isReadableText(name)) {
     return undefined;
   }
-  return PATTERNS.find(({ pattern }) => pattern.test(name))?.rank;
+  const index = RULES.findIndex((rule) => rule.test(name));
+  return index === -1 ? undefined : index;
 }
 
 export function isLicenseFileName(name: string): boolean {
   return licenseRank(name) !== undefined;
+}
+
+/** True for a file inside a LICENSES (or licenses) directory that holds license text. */
+export function isLicensesDirFile(name: string): boolean {
+  return isReadableText(name) && (REUSE_NAME.test(name) || licenseRank(name) !== undefined);
 }
 
 const NOTICE_NAME = /^notice(?<rest>[-_. ].*)?$/i;

@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 
 // npm_execpath points at npm's JS entry point, which avoids needing a shell on Windows.
 const npmCli = process.env.npm_execpath;
@@ -24,6 +24,7 @@ for (const bin of Object.values(pkg.bin)) {
 const allowed = (file) =>
   file === "package.json" ||
   file === "LICENSE" ||
+  file === "NOTICE" ||
   file === "README.md" ||
   (file.startsWith("dist/") && !file.endsWith(".test.js") && !file.startsWith("dist/testing/"));
 for (const file of files) {

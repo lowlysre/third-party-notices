@@ -5,8 +5,8 @@
     "moduleResolution": "NodeNext",
     "lib": ["ES2023"],
     "types": ["node"],
-    "outDir": "dist",
-    "rootDir": "src",
+    "outDir": "../dist",
+    "rootDir": "../src",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -17,5 +17,5 @@
     "sourceMap": false,
     "declaration": false
   },
-  "include": ["src"]
+  "include": ["../src"]
 }

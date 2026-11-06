@@ -112,7 +112,7 @@ export class ConsoleReporter implements Reporter {
       ? style.link(pathToFileURL(data.outputPath).href, data.outputLabel)
       : data.outputLabel;
     lines.push(
-      `  ${style.green(symbols.ok)} ${style.bold(`Wrote ${target}`)} ${style.dim(`${formatBytes(data.bytes)} ${symbols.bullet} ${formatDuration(data.elapsedMs)}`)}`,
+      `  ${style.success(symbols.ok)} ${style.bold(`Wrote ${target}`)} ${style.dim(`${formatBytes(data.bytes)} ${symbols.bullet} ${formatDuration(data.elapsedMs)}`)}`,
     );
     lines.push("");
     lines.push(
@@ -208,7 +208,7 @@ class AnimatedStep implements Step {
   }
 
   succeed(detail?: string): void {
-    this.finish(this.reporter.style.green(this.reporter.symbols.ok), detail);
+    this.finish(this.reporter.style.success(this.reporter.symbols.ok), detail);
   }
 
   fail(detail?: string): void {

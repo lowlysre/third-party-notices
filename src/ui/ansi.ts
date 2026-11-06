@@ -22,6 +22,8 @@ export interface Style {
   magenta: Painter;
   cyan: Painter;
   gray: Painter;
+  /** Bold bright green, for success marks. */
+  success: Painter;
   link: (url: string, text: string) => string;
 }
 
@@ -40,6 +42,7 @@ export function createStyle(options: { color: boolean; hyperlinks?: boolean }): 
     magenta: wrap(35, 39),
     cyan: wrap(36, 39),
     gray: wrap(90, 39),
+    success: (text) => (options.color ? `${ESC}[1m${ESC}[92m${text}${ESC}[39m${ESC}[22m` : text),
     link: (url, text) => (options.hyperlinks ? `${ESC}]8;;${url}${ESC}\\${text}${ESC}]8;;${ESC}\\` : text),
   };
 }

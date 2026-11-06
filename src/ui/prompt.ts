@@ -62,7 +62,7 @@ export function select<T>(
       input.pause();
       output.write(cursor.up(rendered) + cursor.clearDown + cursor.show);
       if (summary) {
-        output.write(`${style.green(symbols.ok)} ${message} ${style.cyan(summary)}\n`);
+        output.write(`${style.success(symbols.ok)} ${message} ${style.cyan(summary)}\n`);
       }
       done();
     };

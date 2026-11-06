@@ -53,6 +53,9 @@ describe("license file names", () => {
       "licenser.txt",
       "sublicense.txt",
       "unlicensed.txt",
+      "LICENSE.tar.gz",
+      "BSD-3-LICENSE",
+      "GPL-COPYRIGHT",
       "OFL-FAQ.txt",
       "patents-list.txt",
       "README.md",
@@ -62,16 +65,32 @@ describe("license file names", () => {
     }
   });
 
-  it("orders LICENSE before COPYING, OFL, COPYRIGHT and PATENTS", async (t) => {
+  it("orders matches by GitHub's licensee score", async (t) => {
     const dir = await tempDir(t);
     await writeFiles(dir, {
       PATENTS: "patents",
       COPYRIGHT: "copyright",
       OFL: "ofl",
+      "MIT-LICENSE": "mit-license",
       COPYING: "copying",
-      "MIT-LICENSE": "license",
+      "LICENSE.md": "license-md",
+      LICENSE: "license",
     });
-    assert.equal((await readLicense({ dir })).text, "license\n\ncopying\n\nofl\n\ncopyright\n\npatents");
+    assert.equal(
+      (await readLicense({ dir })).text,
+      "license\n\nlicense-md\n\ncopying\n\nmit-license\n\nofl\n\ncopyright\n\npatents",
+    );
+  });
+
+  it("reads REUSE files from a LICENSES directory by SPDX id", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, {
+      "LICENSES/Apache-2.0.txt": "apache",
+      "LICENSES/LicenseRef-custom.md": "custom",
+      "LICENSES/notes.js": "ignored",
+      "LICENSES/data.bin": "bin",
+    });
+    assert.equal((await readLicense({ dir })).text, "apache\n\ncustom");
   });
 
   it("recognizes notice files", () => {

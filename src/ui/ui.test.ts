@@ -55,6 +55,11 @@ describe("ansi helpers", () => {
     assert.equal(createStyle({ color: true }).red("x"), "\u001b[31mx\u001b[39m");
   });
 
+  it("paints success marks in bold bright green", () => {
+    assert.equal(createStyle({ color: false }).success("✔"), "✔");
+    assert.equal(createStyle({ color: true }).success("✔"), "\u001b[1m\u001b[92m✔\u001b[39m\u001b[22m");
+  });
+
   it("emits OSC 8 hyperlinks only when enabled", () => {
     assert.equal(createStyle({ color: true, hyperlinks: false }).link("u", "t"), "t");
     assert.equal(stripAnsi(createStyle({ color: true, hyperlinks: true }).link("file:///x", "t")), "t");

@@ -28,7 +28,7 @@ Example run on a terminal:
   Apache-2.0  ███ 16
 ```
 
-It reads the installed `node_modules`, collects each package's license text, groups packages that share identical text, and writes one file. The feature set follows [generate-license-file](https://github.com/TobyAndToby/generate-license-file), as a CLI only.
+It reads the installed `node_modules`, collects each package's license text, groups packages that share identical text, and writes one file. The feature set follows [generate-license-file](https://github.com/TobyAndToby/generate-license-file), as a CLI only, and license files are found with the same file name rules GitHub uses (see [Acknowledgments](#acknowledgments)).
 
 > [!NOTE]
 > The package isn't published to npm yet. Until it is, build from source (see Development).
@@ -133,7 +133,7 @@ For each input `package.json`, the tool walks `dependencies` and `optionalDepend
 For each package, the first match wins:
 
 1. A `replace` entry from the config.
-2. License files in the package root, named by the conventions GitHub recognizes: `LICENSE`, `LICENCE`, `UNLICENSE`, `COPYING`, `COPYRIGHT`, `OFL`, and `PATENTS`, with extensions and decorations such as `LICENSE-MIT`, `MIT-LICENSE`, or `COPYING.LESSER`. Files in a `licenses/` directory are included too. Code, data, and image files with those names (`license.js`, `LICENSE.spdx`) are skipped. Distinct texts are joined, `LICENSE` files first.
+2. License files in the package root, using the file name rules GitHub applies through [Licensee](https://github.com/licensee/licensee): `LICENSE`, `LICENCE`, `UNLICENSE`, `COPYING`, `COPYRIGHT`, `OFL`, and `PATENTS`, with extensions and decorations such as `LICENSE-MIT`, `MIT-LICENSE`, or `COPYING.LESSER`. Files in a `LICENSES/` directory are included too, using the [REUSE](https://reuse.software) convention of an SPDX id plus a text extension. Code, data, and image files with those names (`license.js`, `LICENSE.spdx`) are skipped. Distinct texts are joined, best match first.
 3. Nothing found: the package needs attention.
 
 With `--ci`, or when there's no terminal, the run fails after listing every package without text. On a terminal, you're prompted per package to provide a file path, paste the text (end with a line containing only `.`), use a bundled SPDX template (`MIT`, `ISC`, `BSD-2-Clause`, `BSD-3-Clause`, `0BSD`, with the copyright line taken from the package author), or skip it. Template-generated text is flagged for review in the summary.
@@ -172,4 +172,13 @@ CI runs the tests on Linux, Windows, and macOS with Node 22 and 24, plus [zizmor
 
 ## License
 
-ISC. The feature set and output format follow [generate-license-file](https://github.com/TobyAndToby/generate-license-file) (ISC, Copyright (c) 2021-2023, Toby Bessant & Toby Smith). No code from it is included.
+ISC, see [LICENSE](LICENSE). Credits and the license notices of the projects below are in [NOTICE](NOTICE).
+
+## Acknowledgments
+
+This project stands on two others, and it would not exist without them.
+
+- [generate-license-file](https://github.com/TobyAndToby/generate-license-file) by Toby Bessant and Toby Smith (ISC). It defined the problem and the shape of the solution: the command line options, the config keys, and the output document layout all follow its design. It's the tool to reach for if you want a library API or need YAML and JSON5 configs. No code from it is included here.
+- [Licensee](https://github.com/licensee/licensee) by Ben Balter and contributors (MIT). It's the library behind GitHub's license detection. The license file name rules in `src/resolve/names.ts` are a TypeScript port of its file name scoring, so the files GitHub recognizes as a license are the files found here. That part is derived from its code, which is why its MIT notice is in [NOTICE](NOTICE).
+
+Thank you to both teams.

@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readText } from "../fs.js";
-import { isLicenseFileName, isNoticeFileName, isReadableText, licenseRank } from "./names.js";
+import { isLicenseFileName, isLicensesDirFile, isNoticeFileName, licenseRank } from "./names.js";
 import type { ResolvedPackage } from "./tree.js";
 
 export { isLicenseFileName, isNoticeFileName };
@@ -37,7 +37,7 @@ export async function readLicense(pkg: Pick<ResolvedPackage, "dir">): Promise<Li
   for (const dirName of licenseDirs.sort()) {
     const inner = await readdir(join(pkg.dir, dirName), { withFileTypes: true });
     for (const entry of inner.sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      if (entry.isFile() && isReadableText(entry.name)) {
+      if (entry.isFile() && isLicensesDirFile(entry.name)) {
         paths.push(join(pkg.dir, dirName, entry.name));
       }
     }
