@@ -24,7 +24,7 @@ describe("renderDocument", () => {
     "https://www.npmjs.com/package/third-party-notices",
   ];
 
-  it("matches the generate-license-file layout", () => {
+  it("writes a header, then sections split by separators", () => {
     const text = renderDocument({ groups, appended: ["Appended\nContent"], lineEnding: "lf" });
     assert.equal(
       text,
@@ -59,12 +59,12 @@ describe("renderDocument", () => {
         "Appended",
         "Content",
         "",
-        "-----------",
-        "",
-        ...HEADER,
-        "",
       ].join("\n"),
     );
+  });
+
+  it("is just the header when there is nothing to list", () => {
+    assert.equal(renderDocument({ groups: [], appended: [], lineEnding: "lf" }), `${HEADER.join("\n")}\n`);
   });
 
   it("converts every line ending for crlf", () => {

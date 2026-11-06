@@ -23,9 +23,9 @@ function renderGroup({ dependencies, text, notices }: LicenseGroup): string {
   return `${intro}\n\n${list}\n\n${lead}\n\n${text}${noticeText}`;
 }
 
-/** The notice document, in the layout generate-license-file uses. */
+/** The notice document: a header, then each section split by a separator line. */
 export function renderDocument({ groups, appended, lineEnding }: RenderInput): string {
   const sections = [...groups.map(renderGroup), ...appended.map((text) => normalizeEol(text).trim())];
-  const body = [HEADER, ...sections.flatMap((section) => [section, SEPARATOR]), HEADER].join("\n\n");
+  const body = [HEADER, sections.join(`\n\n${SEPARATOR}\n\n`)].filter(Boolean).join("\n\n");
   return lineEnding === "crlf" ? `${body}\n`.replace(/\n/g, "\r\n") : `${body}\n`;
 }
