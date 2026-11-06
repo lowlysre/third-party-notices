@@ -45,6 +45,33 @@ describe("validateConfig", () => {
   it("rejects invalid exclude regular expressions", () => {
     assert.throws(() => validateConfig({ exclude: ["/(/"] }, "cfg", "."), /invalid regular expression/);
   });
+
+  it("rejects wrong types for scalar keys and lists", () => {
+    assert.throws(
+      () => validateConfig({ inputs: "a", output: 5, omitVersions: "yes", overwrite: 1, replace: [] }, "cfg", "."),
+      (error: unknown) => {
+        assert.ok(error instanceof CliError);
+        for (const expected of [
+          /inputs: expected an array/,
+          /output: expected a string path/,
+          /omitVersions: expected a boolean/,
+          /overwrite: expected a boolean/,
+          /replace: expected an object/,
+        ]) {
+          assert.match(error.message, expected);
+        }
+        return true;
+      },
+    );
+  });
+
+  it("keeps a stdout output as-is and has no suggestion for unrelated keys", () => {
+    assert.equal(validateConfig({ output: "-" }, "cfg", ".").output, "-");
+    assert.throws(
+      () => validateConfig({ zzzzzzzzzz: 1 }, "cfg", "."),
+      (error: unknown) => error instanceof CliError && !/did you mean/.test(error.message),
+    );
+  });
 });
 
 describe("matchesPackage", () => {
@@ -89,6 +116,16 @@ describe("loadConfig", () => {
     });
     assert.deepEqual((await loadConfig(dir, "a.config.mjs")).config.exclude, ["obj"]);
     assert.deepEqual((await loadConfig(dir, "b.config.mjs")).config.exclude, ["fn"]);
+  });
+
+  it("reports load errors from .mjs configs and non-object configs", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, {
+      "broken.config.mjs": "throw new Error('nope');",
+      "array.config.json": "[]",
+    });
+    await assert.rejects(loadConfig(dir, "broken.config.mjs"), /Could not load config .*nope/);
+    await assert.rejects(loadConfig(dir, "array.config.json"), /Invalid config/);
   });
 
   it("fails clearly for a missing explicit config", async (t) => {

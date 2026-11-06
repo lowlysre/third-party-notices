@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { tempDir, writeFiles } from "../testing/fixtures.js";
 import { isLicenseFileName, isNoticeFileName, readLicense } from "./license.js";
-import { renderTemplate, templateIdFor } from "./templates.js";
+import { renderTemplate, SPDX_TEMPLATE_IDS, templateIdFor } from "./templates.js";
 
 describe("license file names", () => {
   it("matches common spellings", () => {
@@ -50,8 +50,17 @@ describe("readLicense", () => {
 
   it("reads files from a licenses directory", async (t) => {
     const dir = await tempDir(t);
-    await writeFiles(dir, { "licenses/a.txt": "A", "licenses/b.js": "ignored" });
-    assert.equal((await readLicense({ dir })).text, "A");
+    await writeFiles(dir, {
+      "licenses/a.txt": "A",
+      "licenses/b.js": "ignored",
+      "LICENSES/sub/skipped.txt": "nested",
+      UNLICENSE: "Public domain",
+      "NOTICES.md": "n",
+    });
+    const text = (await readLicense({ dir })).text;
+    assert.ok(text?.includes("A"));
+    assert.ok(text?.includes("Public domain"));
+    assert.ok(!text?.includes("ignored"));
   });
 
   it("reports nothing when no license is shipped", async (t) => {
@@ -72,5 +81,12 @@ describe("templates", () => {
   it("fills in the copyright holder", () => {
     assert.match(renderTemplate("MIT", "Ada Lovelace"), /Copyright \(c\) Ada Lovelace/);
     assert.match(renderTemplate("ISC", undefined), /the package authors/);
+    for (const id of SPDX_TEMPLATE_IDS) {
+      assert.match(renderTemplate(id, "X"), /Copyright \(c\) X/);
+    }
+  });
+
+  it("throws for ids without a bundled template", () => {
+    assert.throws(() => renderTemplate("GPL-3.0-only", "X"), /No bundled template/);
   });
 });

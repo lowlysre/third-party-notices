@@ -22,15 +22,7 @@ export async function writeFiles(root: string, files: Record<string, string | ob
 export async function installPackage(
   base: string,
   name: string,
-  options: {
-    version?: string;
-    dependencies?: Record<string, string>;
-    optionalDependencies?: Record<string, string>;
-    peerDependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-    license?: string;
-    files?: Record<string, string>;
-  } = {},
+  options: { files?: Record<string, string>; [manifestField: string]: unknown } = {},
 ): Promise<string> {
   const dir = join(base, "node_modules", name);
   const { files = {}, ...manifest } = options;

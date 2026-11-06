@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
-import { PassThrough } from "node:stream";
 import { describe, it } from "node:test";
 import { CancelledError } from "../errors.js";
+import { capture, fakeIo } from "../testing/io.js";
 import { createStyle, stripAnsi, truncate, visibleLength } from "./ansi.js";
 import { renderBanner } from "./banner.js";
 import { detectEnv } from "./env.js";
-import { confirm, type PromptIO, readLine, readMultiline, select } from "./prompt.js";
+import { confirm, readLine, readMultiline, select } from "./prompt.js";
 import { ConsoleReporter, formatBytes, formatDuration } from "./reporter.js";
-import { getSymbols } from "./symbols.js";
 
 describe("detectEnv", () => {
   const tty = { isTTY: true, columns: 100 };
@@ -91,18 +90,6 @@ describe("renderBanner", () => {
     ]);
   });
 });
-
-function capture(): { out: { write(chunk: string): void }; text: () => string } {
-  let buffer = "";
-  return {
-    out: {
-      write(chunk: string): void {
-        buffer += chunk;
-      },
-    },
-    text: () => buffer,
-  };
-}
 
 const plainEnv = { color: false, unicode: true, animate: false, hero: false, hyperlinks: false, columns: 80 };
 
@@ -189,20 +176,6 @@ describe("ConsoleReporter", () => {
     assert.equal(formatBytes(5 * 1024 * 1024), "5.0 MB");
   });
 });
-
-function fakeIo(): { io: PromptIO; input: PassThrough; output: () => string; rawModes: boolean[] } {
-  const input = new PassThrough();
-  const rawModes: boolean[] = [];
-  Object.assign(input, { setRawMode: (mode: boolean) => rawModes.push(mode) });
-  const sink = capture();
-  const io = {
-    input: input as unknown as PromptIO["input"],
-    output: sink.out,
-    style: createStyle({ color: false }),
-    symbols: getSymbols(true),
-  };
-  return { io, input, output: sink.text, rawModes };
-}
 
 const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 

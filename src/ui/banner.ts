@@ -40,8 +40,8 @@ export function renderBanner(style: Style, options: BannerOptions): string[] {
   const side = [
     "",
     title,
-    style.dim("License notices for your npm dependencies,"),
-    style.dim("generated in seconds. Zero dependencies."),
+    style.dim("Zero-dependency license notices"),
+    style.dim("for your npm dependencies."),
     "",
     "",
   ];

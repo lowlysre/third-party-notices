@@ -114,6 +114,69 @@ describe("resolveDependencies", () => {
     assert.deepEqual(names(result), ["a@1.0.0", "b@1.0.0"]);
   });
 
+  it("captures license, homepage and author metadata", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, {
+      "package.json": { name: "app", dependencies: { a: "1", b: "1", c: "1", d: "1", e: "1" } },
+    });
+    await installPackage(root, "a", {
+      license: "MIT",
+      homepage: "https://a.example",
+      author: "Ada <ada@x.y> (https://x.y)",
+    });
+    await installPackage(root, "b", { author: { name: "Bob" } });
+    await installPackage(root, "c", { licenses: [{ type: "MIT" }, { type: "ISC" }, "BSD"] });
+    await installPackage(root, "d", { license: { type: "Apache-2.0" }, author: 42 });
+    await installPackage(root, "e", { licenses: [] });
+
+    const { packages } = await resolveDependencies([join(root, "package.json")]);
+    const byName = Object.fromEntries(packages.map((pkg) => [pkg.name, pkg]));
+    assert.equal(byName.a?.license, "MIT");
+    assert.equal(byName.a?.homepage, "https://a.example");
+    assert.equal(byName.a?.author, "Ada");
+    assert.equal(byName.b?.author, "Bob");
+    assert.equal(byName.c?.license, "MIT OR ISC OR BSD");
+    assert.equal(byName.d?.license, "Apache-2.0");
+    assert.equal(byName.d?.author, undefined);
+    assert.equal(byName.e?.license, undefined);
+  });
+
+  it("defaults missing name and version fields", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, {
+      "package.json": { dependencies: { loose: "1" } },
+      "node_modules/loose/package.json": {},
+    });
+    const { packages } = await resolveDependencies([root]);
+    assert.deepEqual(names({ packages }), ["loose@0.0.0"]);
+  });
+
+  it("truncates long lists of missing dependencies", async (t) => {
+    const root = await tempDir(t);
+    const deps = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`gone${i}`, "1"]));
+    await writeFiles(root, { "package.json": { name: "app", dependencies: deps } });
+    await assert.rejects(
+      resolveDependencies([join(root, "package.json")]),
+      (error: unknown) =>
+        error instanceof CliError &&
+        /10 dependencies are not installed/.test(error.message) &&
+        /and 2 more/.test(error.message),
+    );
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { gone: "1" } } });
+    await assert.rejects(resolveDependencies([join(root, "package.json")]), /1 dependency is not installed/);
+  });
+
+  it("does not list the input project when a dependency links back to it", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, { "package.json": { name: "app", version: "1.0.0", dependencies: { a: "1" } } });
+    await installPackage(root, "a", { dependencies: { app: "1" } });
+    await link(root, join(root, "node_modules", "app"));
+
+    const result = await resolveDependencies([join(root, "package.json")]);
+    assert.deepEqual(names(result), ["a@1.0.0"]);
+    assert.deepEqual(result.firstParty, []);
+  });
+
   it("explains when the input cannot be found", async (t) => {
     const root = await tempDir(t);
     await assert.rejects(resolveDependencies([join(root, "nope", "package.json")]), /Cannot find/);

@@ -80,12 +80,7 @@ function runParse(argv: string[]) {
 
 export function parseCliArgs(argv: string[]): Args {
   const known = new Set(Object.keys(OPTIONS));
-  let parsed: ReturnType<typeof runParse>;
-  try {
-    parsed = runParse(argv);
-  } catch (error) {
-    throw new UsageError((error as Error).message);
-  }
+  const parsed = runParse(argv);
 
   for (const token of parsed.tokens ?? []) {
     if (token.kind === "option" && !known.has(token.name)) {

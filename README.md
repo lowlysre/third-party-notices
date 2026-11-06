@@ -10,8 +10,8 @@ Example run on a terminal:
 ```text
 ████████╗██████╗ ███╗   ██╗
 ╚══██╔══╝██╔══██╗████╗  ██║   third-party-notices v0.1.0
-   ██║   ██████╔╝██╔██╗ ██║   License notices for your npm dependencies,
-   ██║   ██╔═══╝ ██║╚██╗██║   generated in seconds. Zero dependencies.
+   ██║   ██████╔╝██╔██╗ ██║   Zero-dependency license notices
+   ██║   ██╔═══╝ ██║╚██╗██║   for your npm dependencies.
    ██║   ██║     ██║ ╚████║
    ╚═╝   ╚═╝     ╚═╝  ╚═══╝
 
