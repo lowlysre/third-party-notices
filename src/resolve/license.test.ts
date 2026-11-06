@@ -5,35 +5,73 @@ import { isLicenseFileName, isNoticeFileName, readLicense } from "./license.js";
 import { renderTemplate, SPDX_TEMPLATE_IDS, templateIdFor } from "./templates.js";
 
 describe("license file names", () => {
-  it("matches common spellings", () => {
+  it("matches the conventions GitHub recognizes", () => {
     for (const name of [
       "LICENSE",
       "LICENCE",
+      "UNLICENSE",
       "license.md",
+      "LICENSE.markdown",
       "LICENSE.txt",
+      "LICENSE.html",
+      "LICENSE.rst",
+      "LICENSE.docs",
       "LICENSE-MIT",
+      "LICENSE_APACHE.txt",
+      "LICENSE-2.0.txt",
       "MIT-LICENSE",
       "MIT-LICENSE.txt",
       "apache_license.md",
       "COPYING",
+      "COPYING.txt",
       "COPYING.LESSER",
-      "UNLICENSE",
+      "COPYING-GPL",
+      "GPL-COPYING",
+      "COPYRIGHT",
+      "COPYRIGHT.txt",
+      "COPYRIGHT-HOLDERS.md",
+      "OFL",
+      "OFL.txt",
+      "PATENTS",
+      "PATENTS.md",
     ]) {
       assert.equal(isLicenseFileName(name), true, name);
     }
   });
 
-  it("rejects code and unrelated files", () => {
+  it("rejects code, data, binaries and look-alikes", () => {
     for (const name of [
       "license.js",
+      "license.ts",
+      "license.json",
       "license-checker.json",
+      "license.xml",
+      "license.sh",
+      "license.go",
+      "LICENSE.spdx",
+      "LICENSE.png",
       "licenser.txt",
       "sublicense.txt",
+      "unlicensed.txt",
+      "OFL-FAQ.txt",
+      "patents-list.txt",
       "README.md",
       "index.js",
     ]) {
       assert.equal(isLicenseFileName(name), false, name);
     }
+  });
+
+  it("orders LICENSE before COPYING, OFL, COPYRIGHT and PATENTS", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, {
+      PATENTS: "patents",
+      COPYRIGHT: "copyright",
+      OFL: "ofl",
+      COPYING: "copying",
+      "MIT-LICENSE": "license",
+    });
+    assert.equal((await readLicense({ dir })).text, "license\n\ncopying\n\nofl\n\ncopyright\n\npatents");
   });
 
   it("recognizes notice files", () => {
