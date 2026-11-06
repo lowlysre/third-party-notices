@@ -40,7 +40,7 @@ export function renderBanner(style: Style, options: BannerOptions): string[] {
   const side = [
     "",
     title,
-    style.dim("Zero-dependency license notices"),
+    style.dim("A tiny license notice CLI"),
     style.dim("for your npm dependencies."),
     "",
     "",

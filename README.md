@@ -10,7 +10,7 @@ Example run on a terminal:
 ```text
 ████████╗██████╗ ███╗   ██╗
 ╚══██╔══╝██╔══██╗████╗  ██║   third-party-notices v0.1.0
-   ██║   ██████╔╝██╔██╗ ██║   Zero-dependency license notices
+   ██║   ██████╔╝██╔██╗ ██║   A tiny license notice CLI
    ██║   ██╔═══╝ ██║╚██╗██║   for your npm dependencies.
    ██║   ██║     ██║ ╚████║
    ╚═╝   ╚═╝     ╚═╝  ╚═══╝
