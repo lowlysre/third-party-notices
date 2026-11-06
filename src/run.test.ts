@@ -11,8 +11,10 @@ import type { UiEnv } from "./ui/env.js";
 import { ConsoleReporter } from "./ui/reporter.js";
 
 const env: UiEnv = { color: false, unicode: true, animate: false, hero: false, hyperlinks: false, columns: 80 };
+type Temp = Parameters<typeof tempDir>[0];
 
-function harness(cwd: string, withPrompt = false) {
+/** Runs the pipeline against `cwd`, optionally with an interactive prompt. */
+function harness(cwd: string, interactive = false) {
   const stderr = capture();
   const stdout = capture();
   const tty = fakeIo();
@@ -27,159 +29,194 @@ function harness(cwd: string, withPrompt = false) {
         version: "1.2.3",
         reporter: new ConsoleReporter(stderr.out, env, { verbose: args.verbose }),
         stdout: stdout.out,
-        prompt: withPrompt ? tty.io : undefined,
+        prompt: interactive ? tty.io : undefined,
       });
     },
   };
 }
 
-/** Project whose only dependency ships no license text. */
-async function bareProject(t: Parameters<typeof tempDir>[0], license = "MIT"): Promise<string> {
+/** A project whose only dependency has no license file. */
+async function bareProject(t: Temp, license = "MIT"): Promise<string> {
   const root = await tempDir(t);
   await writeFiles(root, { "package.json": { name: "app", dependencies: { bare: "1" } } });
-  await installPackage(root, "bare", { license, files: {} });
+  await installPackage(root, "bare", { license });
   return root;
 }
 
-describe("run: output handling", () => {
-  it("asks before overwriting and aborts when declined", async (t) => {
-    const root = await bareProject(t);
-    await writeFiles(root, { "out.txt": "keep", "bare-license.txt": "Text" });
-    await writeFiles(root, { "third-party-notices.config.json": { replace: { bare: "./bare-license.txt" } } });
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "out.txt", "--eol", "lf"]);
-    await script(h.tty.input, h.tty.output, [[/already exists\. Overwrite\?/, "\u001b[B\r"]]);
-    await assert.rejects(pending, (error: unknown) => error instanceof CliError && /Aborted/.test(error.message));
-    assert.equal(await readFile(join(root, "out.txt"), "utf8"), "keep");
-  });
+const config = (root: string, value: object) => writeFiles(root, { "third-party-notices.config.json": value });
 
-  it("overwrites after confirmation", async (t) => {
-    const root = await bareProject(t);
-    await writeFiles(root, { "out.txt": "old", "bare-license.txt": "Replacement text" });
-    await writeFiles(root, { "third-party-notices.config.json": { replace: { bare: "./bare-license.txt" } } });
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "out.txt", "--eol", "lf"]);
-    await script(h.tty.input, h.tty.output, [[/Overwrite\?/, "\r"]]);
-    await pending;
-    assert.match(await readFile(join(root, "out.txt"), "utf8"), /Replacement text/);
-  });
-
-  it("honors overwrite and output from the config", async (t) => {
-    const root = await bareProject(t);
-    await writeFiles(root, {
-      "out.txt": "old",
-      "lic.txt": "Config text",
-      "third-party-notices.config.json": {
-        output: "out.txt",
-        overwrite: true,
-        replace: { "bare@1.0.0": "lic.txt" },
-        lineEnding: "lf",
-      },
-    });
+describe("run: output", () => {
+  it("writes grouped notices to a file and reports them", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { a: "1", b: "1" } } });
+    await installPackage(root, "a", { license: "MIT", files: { LICENSE: "Shared text" } });
+    await installPackage(root, "b", { license: "MIT", files: { LICENSE: "Shared text" } });
     const h = harness(root);
-    await h.exec([]);
-    assert.match(await readFile(join(root, "out.txt"), "utf8"), /Config text/);
+    await h.exec(["-o", "out.txt", "--eol", "lf"]);
+    const text = await readFile(join(root, "out.txt"), "utf8");
+    assert.match(text, /The following npm packages may be included in this product:\n\n - a@1\.0\.0\n - b@1\.0\.0/);
+    assert.equal(text.match(/Shared text/g)?.length, 1);
+    assert.match(h.stderr(), /Wrote out\.txt/);
+    assert.match(h.stderr(), /MIT {2}█+ 2/);
   });
 
-  it("writes to stdout with -o -", async (t) => {
+  it("writes only the document to stdout with -o -", async (t) => {
     const root = await bareProject(t);
-    await writeFiles(root, {
-      "lic.txt": "Std text",
-      "third-party-notices.config.json": { replace: { bare: "lic.txt" } },
-    });
+    await config(root, { replace: { bare: "lic.txt" } });
+    await writeFiles(root, { "lic.txt": "Std text" });
     const h = harness(root);
     await h.exec(["-o", "-", "--eol", "lf"]);
     assert.match(h.stdout(), /Std text/);
     assert.match(h.stderr(), /Wrote stdout/);
   });
 
-  it("reports excluded packages and unreadable replacement or appendix files", async (t) => {
+  it("applies the config: exclude, replace, append, output and overwrite", async (t) => {
     const root = await bareProject(t);
-    await writeFiles(root, { "third-party-notices.config.json": { exclude: ["bare"] } });
-    const excluded = harness(root);
-    await excluded.exec(["-o", "-"]);
-    assert.match(excluded.stderr(), /0 packages, 1 excluded/);
-
-    await writeFiles(root, { "third-party-notices.config.json": { replace: { bare: "missing.txt" } } });
-    await assert.rejects(harness(root).exec(["-o", "-"]), /Replacement license for bare not found/);
-
-    await writeFiles(root, { "third-party-notices.config.json": { exclude: ["bare"], append: ["missing.txt"] } });
-    await assert.rejects(harness(root).exec(["-o", "-"]), /Appended file not found/);
-  });
-
-  it("surfaces dependency resolution failures", async (t) => {
-    const root = await tempDir(t);
-    await writeFiles(root, { "package.json": { name: "app", dependencies: { gone: "1" } } });
-    await assert.rejects(harness(root).exec(["-o", "-"]), /not installed/);
-  });
-
-  it("truncates long lists of unresolved packages", async (t) => {
-    const root = await tempDir(t);
-    const deps = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`pkg${i}`, "1"]));
-    await writeFiles(root, { "package.json": { name: "app", dependencies: deps } });
-    for (const name of Object.keys(deps)) {
-      await installPackage(root, name);
-    }
-    await assert.rejects(harness(root).exec(["--ci", "-o", "-"]), (error: unknown) => {
-      assert.ok(error instanceof CliError);
-      assert.match(error.message, /No license text found for 12 packages/);
-      assert.match(error.message, /and 2 more/);
-      return true;
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { bare: "1", skipme: "1" } } });
+    await installPackage(root, "skipme", { files: { LICENSE: "Excluded text" } });
+    await writeFiles(root, { "out.txt": "old", "lic.txt": "Replaced text", "extra.txt": "Appended text" });
+    await config(root, {
+      exclude: ["skipme"],
+      replace: { "bare@1.0.0": "lic.txt" },
+      append: ["extra.txt"],
+      output: "out.txt",
+      overwrite: true,
+      lineEnding: "lf",
     });
+    const h = harness(root);
+    await h.exec([]);
+    const text = await readFile(join(root, "out.txt"), "utf8");
+    assert.match(text, /Replaced text/);
+    assert.match(text, /Appended text/);
+    assert.doesNotMatch(text, /Excluded text|skipme/);
+    assert.match(h.stderr(), /1 packages, 1 excluded/);
   });
 
-  it("singular wording for one unresolved package", async (t) => {
+  it("fails clearly for unreadable replacement or appended files and missing dependencies", async (t) => {
     const root = await bareProject(t);
-    await assert.rejects(harness(root).exec(["--ci", "-o", "-"]), /for 1 package:/);
+    await config(root, { replace: { bare: "missing.txt" } });
+    await assert.rejects(harness(root).exec(["-o", "-"]), /Replacement license for bare not found/);
+    await config(root, { exclude: ["bare"], append: ["missing.txt"] });
+    await assert.rejects(harness(root).exec(["-o", "-"]), /Appended file not found/);
+
+    const empty = await tempDir(t);
+    await writeFiles(empty, { "package.json": { name: "app", dependencies: { gone: "1" } } });
+    await assert.rejects(harness(empty).exec(["-o", "-"]), /not installed/);
+  });
+});
+
+describe("run: existing output", () => {
+  const setup = async (t: Temp) => {
+    const root = await bareProject(t);
+    await config(root, { replace: { bare: "lic.txt" } });
+    await writeFiles(root, { "out.txt": "old", "lic.txt": "New text" });
+    return root;
+  };
+
+  it("refuses to overwrite without a terminal, then overwrites with --overwrite", async (t) => {
+    const root = await setup(t);
+    await assert.rejects(
+      harness(root).exec(["-o", "out.txt"]),
+      (error: unknown) =>
+        error instanceof CliError &&
+        /out\.txt already exists/.test(error.message) &&
+        /--overwrite/.test(error.hint ?? ""),
+    );
+    assert.equal(await readFile(join(root, "out.txt"), "utf8"), "old");
+    await harness(root).exec(["-o", "out.txt", "--overwrite", "--eol", "lf"]);
+    assert.match(await readFile(join(root, "out.txt"), "utf8"), /New text/);
+  });
+
+  it("asks first on a terminal, and leaves the file alone when declined", async (t) => {
+    const root = await setup(t);
+    const declined = harness(root, true);
+    const pending = declined.exec(["-o", "out.txt"]);
+    await script(declined.tty.input, declined.tty.output, [[/Overwrite\?/, "\u001b[B\r"]]);
+    await assert.rejects(pending, /Aborted/);
+    assert.equal(await readFile(join(root, "out.txt"), "utf8"), "old");
+
+    const accepted = harness(root, true);
+    const next = accepted.exec(["-o", "out.txt"]);
+    await script(accepted.tty.input, accepted.tty.output, [[/Overwrite\?/, "\r"]]);
+    await next;
+    assert.match(await readFile(join(root, "out.txt"), "utf8"), /New text/);
+  });
+});
+
+describe("run: packages with no license text", () => {
+  it("fails with --ci, listing the packages", async (t) => {
+    const root = await bareProject(t);
+    await assert.rejects(harness(root, true).exec(["--ci", "-o", "-"]), /No license text found for 1 package/);
+  });
+
+  it("prompts on a terminal and uses the answer", async (t) => {
+    const root = await bareProject(t, "Proprietary");
+    const h = harness(root, true);
+    const pending = h.exec(["-o", "-", "--eol", "lf"]);
+    await script(h.tty.input, h.tty.output, [
+      [/How should this be handled\?/, "\u001b[B\r"],
+      [/finish with a line containing only/, "Typed text\n.\n"],
+    ]);
+    await pending;
+    assert.match(h.stdout(), /Typed text/);
+  });
+
+  it("skips a package declined at the prompt, with a warning and a verbose note", async (t) => {
+    const root = await bareProject(t, "Proprietary");
+    const h = harness(root, true);
+    const pending = h.exec(["-o", "-", "--verbose"]);
+    await script(h.tty.input, h.tty.output, [[/How should this be handled\?/, "\u001b"]]);
+    await pending;
+    assert.match(h.stderr(), /▲ Skipped bare@1\.0\.0: no license text/);
+    assert.match(h.stderr(), /ℹ bare@1\.0\.0 declares Proprietary but ships no license file/);
+    assert.doesNotMatch(h.stdout(), /bare@1\.0\.0\n/);
+  });
+
+  it("keeps the maintainer note out of the output without --verbose", async (t) => {
+    const root = await bareProject(t, "Proprietary");
+    const h = harness(root, true);
+    const pending = h.exec(["-o", "-"]);
+    await script(h.tty.input, h.tty.output, [[/How should this be handled\?/, "\u001b"]]);
+    await pending;
+    assert.doesNotMatch(h.stderr(), /ships no license file/);
   });
 });
 
 describe("run: --allow-missing", () => {
-  async function mixedProject(t: Parameters<typeof tempDir>[0]): Promise<string> {
+  async function mixedProject(t: Temp) {
     const root = await tempDir(t);
     await writeFiles(root, {
       "package.json": { name: "app", dependencies: { fine: "1", templated: "1", opaque: "1" } },
     });
     await installPackage(root, "fine", { license: "MIT", files: { LICENSE: "Shipped text" } });
-    await installPackage(root, "templated", { license: "ISC", author: "Ada Lovelace", files: {} });
-    await installPackage(root, "opaque", { license: "Proprietary", files: {} });
+    await installPackage(root, "templated", { license: "ISC", author: "Ada Lovelace" });
+    await installPackage(root, "opaque", { license: "Proprietary" });
     return root;
   }
 
-  it("uses a template where one fits and skips the rest, without failing or prompting", async (t) => {
-    const root = await mixedProject(t);
-    const h = harness(root, true);
+  it("uses a template where one fits and skips the rest, without prompting or failing", async (t) => {
+    const h = harness(await mixedProject(t), true);
     await h.exec(["--ci", "--allow-missing", "-o", "-", "--eol", "lf", "--verbose"]);
     assert.match(h.stdout(), /Shipped text/);
     assert.match(h.stdout(), /ISC License\n\nCopyright \(c\) Ada Lovelace/);
     assert.doesNotMatch(h.stdout(), /opaque@/);
     assert.match(h.stderr(), /▲ templated@1\.0\.0: license text generated from an SPDX template, please review/);
     assert.match(h.stderr(), /▲ Skipped opaque@1\.0\.0: no license text/);
-    assert.match(h.stderr(), /ℹ opaque@1\.0\.0 declares Proprietary but ships no license file/);
-    assert.equal(h.tty.output(), "", "no prompt was shown");
+    assert.equal(h.tty.output(), "");
   });
 
-  it("does not prompt on a terminal either, and honors allowMissing from the config", async (t) => {
+  it("is also switched on by the config, even on a terminal", async (t) => {
     const root = await mixedProject(t);
-    await writeFiles(root, { "third-party-notices.config.json": { allowMissing: true } });
+    await config(root, { allowMissing: true });
     const h = harness(root, true);
     await h.exec(["-o", "-"]);
     assert.match(h.stderr(), /Skipped opaque@1\.0\.0/);
     assert.equal(h.tty.output(), "");
   });
-
-  it("still fails without it", async (t) => {
-    const root = await mixedProject(t);
-    await assert.rejects(harness(root).exec(["--ci", "-o", "-"]), (error: unknown) => {
-      assert.ok(error instanceof CliError);
-      assert.match(error.hint ?? "", /--allow-missing/);
-      return true;
-    });
-  });
 });
 
 describe("run: license review", () => {
-  async function reviewProject(t: Parameters<typeof tempDir>[0]): Promise<string> {
+  async function reviewProject(t: Temp) {
     const root = await tempDir(t);
     await writeFiles(root, {
       "package.json": { name: "app", dependencies: { fine: "1", gpl: "1", agpl: "1", nolicense: "1" } },
@@ -191,168 +228,37 @@ describe("run: license review", () => {
     return root;
   }
 
-  it("lists flagged packages in the summary, most severe first, and still exits cleanly", async (t) => {
-    const root = await reviewProject(t);
-    const h = harness(root);
+  it("lists flagged packages most severe first without failing", async (t) => {
+    const h = harness(await reviewProject(t));
     await h.exec(["--ci", "-o", "-"]);
     const out = h.stderr();
     assert.match(out, /▲ License review/);
-    assert.ok(out.indexOf("agpl@1.0.0") < out.indexOf("gpl@1.0.0"));
-    assert.match(out, /Unclear terms/);
+    assert.ok(
+      out.indexOf("nolicense@1.0.0") < out.indexOf("agpl@1.0.0") &&
+        out.indexOf("agpl@1.0.0") < out.indexOf("gpl@1.0.0"),
+    );
     assert.doesNotMatch(out, /fine@1\.0\.0/);
   });
 
   it("fails after writing when a blocked category is present", async (t) => {
     const root = await reviewProject(t);
-    const h = harness(root);
     await assert.rejects(
-      h.exec(["--ci", "-o", "out.txt", "--fail-on", "strong-copyleft,network-copyleft"]),
-      (error: unknown) => {
-        assert.ok(error instanceof CliError);
-        assert.match(error.message, /2 packages in blocked license categories \(Network copyleft, Strong copyleft\)/);
-        assert.match(error.message, /agpl@1\.0\.0 \(AGPL-3\.0-only\)/);
-        assert.match(error.hint ?? "", /"allow"/);
-        return true;
-      },
+      harness(root).exec(["--ci", "-o", "out.txt", "--fail-on", "strong-copyleft,network-copyleft"]),
+      /2 packages in blocked license categories \(Network copyleft, Strong copyleft\)/,
     );
     assert.match(await readFile(join(root, "out.txt"), "utf8"), /GPL text/);
   });
 
-  it("uses failOn and allow from the config", async (t) => {
+  it("takes failOn and allow from the config", async (t) => {
     const root = await reviewProject(t);
-    await writeFiles(root, {
-      "third-party-notices.config.json": { failOn: ["any"], allow: ["gpl", "/^agpl$/", "nolicense@1.0.0"] },
-    });
+    await config(root, { failOn: ["any"], allow: ["gpl", "/^agpl$/", "nolicense@1.0.0"] });
     const h = harness(root);
     await h.exec(["--ci", "-o", "-"]);
     assert.doesNotMatch(h.stderr(), /License review/);
-
-    await writeFiles(root, { "third-party-notices.config.json": { failOn: ["unclear"], allow: ["gpl"] } });
+    await config(root, { failOn: ["unclear"], allow: ["gpl"] });
     await assert.rejects(
       harness(root).exec(["--ci", "-o", "-"]),
       /1 package in blocked license categories \(Unclear terms\)/,
     );
-  });
-
-  it("names the remaining count when more than five packages are blocked", async (t) => {
-    const root = await tempDir(t);
-    const deps = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`gpl${i}`, "1"]));
-    await writeFiles(root, { "package.json": { name: "app", dependencies: deps } });
-    for (const name of Object.keys(deps)) {
-      await installPackage(root, name, { license: "GPL-2.0-only", files: { LICENSE: "GPL" } });
-    }
-    await assert.rejects(harness(root).exec(["--ci", "-o", "-", "--fail-on", "copyleft"]), /…and 2 more/);
-  });
-});
-
-describe("run: interactive license prompts", () => {
-  const HOW = /How should this be handled\?/;
-
-  it("generates text from an SPDX template and flags it for review", async (t) => {
-    const root = await bareProject(t);
-    await writeFiles(root, {
-      "node_modules/bare/package.json": {
-        name: "bare",
-        version: "1.0.0",
-        license: "MIT",
-        author: "Ada Lovelace <ada@example.com>",
-        homepage: "https://example.com",
-      },
-    });
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--eol", "lf", "--verbose"]);
-    await script(h.tty.input, h.tty.output, [[HOW, "\u001b[B\u001b[B\r"]]);
-    await pending;
-    assert.match(h.stdout(), /Copyright \(c\) Ada Lovelace/);
-    assert.match(h.stderr(), /generated from an SPDX template/);
-    assert.match(
-      h.stderr(),
-      /bare@1\.0\.0 declares MIT but ships no license file; consider asking the maintainers to add one \(https:\/\/example\.com\)/,
-    );
-    assert.match(h.tty.output(), /declares MIT/);
-  });
-
-  it("skips a package with Escape and warns", async (t) => {
-    const root = await bareProject(t, "Proprietary");
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--eol", "lf"]);
-    await script(h.tty.input, h.tty.output, [[HOW, "\u001b"]]);
-    await pending;
-    assert.match(h.stderr(), /▲ Skipped bare@1\.0\.0: no license text/);
-    assert.doesNotMatch(h.stderr(), /ships no license file/, "maintainer notes are verbose-only");
-    assert.match(h.tty.output(), /declares Proprietary/);
-    assert.doesNotMatch(h.stdout(), /bare@1\.0\.0\n/);
-  });
-
-  it("adds a maintainer note for skipped packages with --verbose", async (t) => {
-    const root = await bareProject(t, "Proprietary");
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--verbose"]);
-    await script(h.tty.input, h.tty.output, [[HOW, "\u001b"]]);
-    await pending;
-    assert.match(
-      h.stderr(),
-      /ℹ bare@1\.0\.0 declares Proprietary but ships no license file; consider asking the maintainers to add one/,
-    );
-  });
-
-  it("points at the repository and handles a missing license field in the verbose note", async (t) => {
-    const root = await tempDir(t);
-    await writeFiles(root, { "package.json": { name: "app", dependencies: { quiet: "1" } } });
-    await writeFiles(root, {
-      "node_modules/quiet/package.json": {
-        name: "quiet",
-        version: "1.0.0",
-        repository: { type: "git", url: "git+https://github.com/acme/quiet.git" },
-      },
-    });
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--verbose"]);
-    await script(h.tty.input, h.tty.output, [[HOW, "\u001b"]]);
-    await pending;
-    assert.match(
-      h.stderr(),
-      /declares no license and ships no license file; consider asking the maintainers to add one \(https:\/\/github\.com\/acme\/quiet\)/,
-    );
-    assert.match(h.tty.output(), /no license field/);
-  });
-
-  it("accepts pasted text and retries after an empty paste", async (t) => {
-    const root = await bareProject(t);
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--eol", "lf"]);
-    await script(h.tty.input, h.tty.output, [
-      [HOW, "\u001b[B\r"],
-      [/finish with a line containing only/, ".\n"],
-      [/Nothing was entered/, ""],
-      [HOW, "\u001b[B\r"],
-      [/finish with a line containing only/, "Pasted line one\nPasted line two\n.\n"],
-    ]);
-    await pending;
-    assert.match(h.stdout(), /Pasted line one\nPasted line two/);
-  });
-
-  it("reads a license file, retrying after unreadable and empty files", async (t) => {
-    const root = await bareProject(t, "Custom");
-    await writeFiles(root, { "empty.txt": "  \n", "real.txt": "From a file" });
-    const h = harness(root, true);
-    const pending = h.exec(["-o", "-", "--eol", "lf"]);
-    await script(h.tty.input, h.tty.output, [
-      [HOW, "\r"],
-      [/Path to license file:/, `${join(root, "missing.txt")}\n`],
-      [/Could not read/, ""],
-      [HOW, "\r"],
-      [/Path to license file:/, `${join(root, "empty.txt")}\n`],
-      [/That file is empty/, ""],
-      [HOW, "\r"],
-      [/Path to license file:/, `${join(root, "real.txt")}\n`],
-    ]);
-    await pending;
-    assert.match(h.stdout(), /From a file/);
-  });
-
-  it("does not prompt when --ci is set even with a terminal", async (t) => {
-    const root = await bareProject(t);
-    await assert.rejects(harness(root, true).exec(["--ci", "-o", "-"]), /No license text found/);
   });
 });

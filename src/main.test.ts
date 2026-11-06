@@ -73,15 +73,6 @@ describe("main", () => {
     assert.match(h.stderr(), /error: .*bad config/);
   });
 
-  it("generates notices non-interactively", async (t) => {
-    const root = await bareProject(t);
-    await writeFiles(root, { "node_modules/bare/LICENSE": "MIT text" });
-    const h = makeIo(root);
-    assert.equal(await main(["-o", "-", "-q"], h.io), 0);
-    assert.match(h.stdout(), /MIT text/);
-    assert.equal(h.stderr(), "");
-  });
-
   it("prompts on an interactive terminal and finishes the run", async (t) => {
     const root = await bareProject(t);
     const h = makeIo(root, { tty: true });

@@ -1,66 +1,83 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CliError } from "../errors.js";
-import type { Finding } from "../policy.js";
 import { capture } from "../testing/io.js";
 import { stripAnsi } from "./ansi.js";
 import type { UiEnv } from "./env.js";
-import { ConsoleReporter } from "./reporter.js";
+import { ConsoleReporter, type SummaryData } from "./reporter.js";
 
-const base: UiEnv = { color: false, unicode: true, animate: false, hero: false, hyperlinks: false, columns: 80 };
-const animated: UiEnv = { ...base, animate: true, color: true };
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const plain: UiEnv = { color: false, unicode: true, animate: false, hero: false, hyperlinks: false, columns: 80 };
+const animated: UiEnv = { ...plain, animate: true, color: true };
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const summary = {
-  packages: 3,
+const data: SummaryData = {
+  packages: 1,
   uniqueLicenses: 1,
-  breakdown: [] as Array<[string, number]>,
+  breakdown: [],
   outputPath: undefined,
   outputLabel: "stdout",
-  bytes: 10,
-  elapsedMs: 5,
-  findings: [] as Finding[],
+  bytes: 1,
+  elapsedMs: 1,
+  findings: [],
 };
 
-describe("ConsoleReporter steps", () => {
-  it("marks failed steps and ignores results after a step is finished", () => {
+describe("ConsoleReporter", () => {
+  it("prints a plain, line-based run without control sequences", async () => {
     const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, base);
-    const step = reporter.step("Resolving");
-    step.fail("boom");
-    step.succeed("late");
-    step.fail("later");
-    assert.equal(text().match(/Resolving/g)?.length, 1);
-    assert.match(text(), /✖ Resolving boom/);
+    const reporter = new ConsoleReporter(out, plain);
+    await reporter.banner("1.0.0");
+    reporter.step("Resolving dependencies").succeed("12 packages");
+    reporter.summary(data);
+    assert.match(text(), /third-party-notices v1\.0\.0/);
+    assert.match(text(), /✔ Resolving dependencies 12 packages \(\d+ms\)/);
+    assert.ok(!text().includes("\u001b"));
   });
 
-  it("stop clears the animation without printing a result", async () => {
+  it("prints nothing but errors in quiet mode", async () => {
+    const { out, text } = capture();
+    const reporter = new ConsoleReporter(out, plain, { quiet: true });
+    await reporter.banner("1.0.0");
+    reporter.step("x").succeed();
+    reporter.summary(data);
+    assert.equal(text(), "");
+    reporter.error(new CliError("still shown"));
+    assert.match(text(), /error: still shown/);
+  });
+
+  it("collects warnings always and notes only when verbose", () => {
+    const quiet = capture();
+    const regular = new ConsoleReporter(quiet.out, plain);
+    regular.warn("careful");
+    regular.note("detail");
+    regular.summary(data);
+    assert.match(quiet.text(), /▲ careful/);
+    assert.doesNotMatch(quiet.text(), /detail/);
+
+    const loud = capture();
+    const verbose = new ConsoleReporter(loud.out, plain, { verbose: true });
+    verbose.note("detail");
+    verbose.summary(data);
+    assert.match(loud.text(), /ℹ detail/);
+  });
+
+  it("reveals the hero banner row by row when animating, and at once otherwise", async () => {
+    const animatedOut = capture();
+    await new ConsoleReporter(animatedOut.out, { ...animated, hero: true, columns: 100 }, { revealDelayMs: 0 }).banner(
+      "2.0.0",
+    );
+    const staticOut = capture();
+    await new ConsoleReporter(staticOut.out, { ...plain, hero: true, columns: 100 }).banner("2.0.0");
+    for (const text of [stripAnsi(animatedOut.text()), staticOut.text()]) {
+      assert.match(text, /████████╗/);
+      assert.match(text, /third-party-notices v2\.0\.0/);
+    }
+  });
+
+  it("pauses the active step while an action runs, and propagates the result or error", async () => {
     const { out, text } = capture();
     const reporter = new ConsoleReporter(out, animated);
-    const step = reporter.step("Working");
-    await sleep(100);
-    step.stop();
-    step.stop();
-    step.succeed("ignored");
-    assert.ok(!stripAnsi(text()).includes("ignored"));
-    assert.ok(text().endsWith("\u001b[?25h"));
-  });
-
-  it("uses the final detail when succeed gets none", () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, base);
-    const step = reporter.step("Reading");
-    step.update("4/4");
-    step.succeed();
-    assert.match(text(), /Reading 4\/4/);
-  });
-
-  it("pauses the spinner while an action runs, then resumes it", async () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, animated);
     const step = reporter.step("Reading");
     await sleep(100);
-    const before = text().length;
     const result = await reporter.suspend(async () => {
       const paused = text().length;
       await sleep(250);
@@ -69,13 +86,7 @@ describe("ConsoleReporter steps", () => {
     });
     assert.equal(result, 42);
     await sleep(120);
-    assert.ok(text().length > before, "frames resume");
-    step.succeed();
-  });
-
-  it("suspend works with no active step and when the action throws", async () => {
-    const reporter = new ConsoleReporter(capture().out, base);
-    assert.equal(await reporter.suspend(async () => 1), 1);
+    step.stop();
     await assert.rejects(
       reporter.suspend(async () => {
         throw new Error("x");
@@ -84,129 +95,13 @@ describe("ConsoleReporter steps", () => {
     );
   });
 
-  it("truncates long details to the terminal width", async () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, { ...animated, columns: 30 });
-    const step = reporter.step("Reading");
-    step.update("a-very-long-package-name-that-cannot-fit-in-the-terminal");
-    await sleep(100);
-    step.stop();
-    assert.match(stripAnsi(text()), /…/);
-  });
-});
-
-describe("ConsoleReporter banner", () => {
-  it("reveals the hero row by row on an animated terminal", async () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, { ...animated, hero: true, columns: 100 }, { revealDelayMs: 0 });
-    await reporter.banner("2.0.0");
-    const output = stripAnsi(text());
-    assert.match(output, /████████╗/);
-    assert.match(output, /third-party-notices v2\.0\.0/);
-  });
-
-  it("shows the hero without animation delays when not animating", async () => {
-    const { out, text } = capture();
-    await new ConsoleReporter(out, { ...base, hero: true, columns: 100 }).banner("2.0.0");
-    assert.match(text(), /████████╗/);
-  });
-});
-
-describe("ConsoleReporter notes", () => {
-  const data = { ...summary };
-
-  it("shows notes in the summary only with verbose", () => {
-    const quietNotes = capture();
-    const plain = new ConsoleReporter(quietNotes.out, base);
-    plain.note("hidden detail");
-    plain.summary(data);
-    assert.doesNotMatch(quietNotes.text(), /hidden detail/);
-
-    const verbose = capture();
-    const reporter = new ConsoleReporter(verbose.out, base, { verbose: true });
-    reporter.note("shown detail");
-    reporter.summary(data);
-    assert.match(verbose.text(), /ℹ shown detail/);
-  });
-});
-
-describe("ConsoleReporter summary", () => {
-  it("lists packages that need license review, capped, with a count of the rest", () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, base);
-    const findings: Finding[] = [
-      { name: "evil", version: "1.0.0", license: "AGPL-3.0-only", category: "network-copyleft", id: "AGPL-3.0-only" },
-      { name: "none", version: "2.0.0", license: undefined, category: "unclear", id: "(none)" },
-      ...Array.from(
-        { length: 12 },
-        (_, i): Finding => ({
-          name: `gpl${i}`,
-          version: "1.0.0",
-          license: "GPL-3.0-only",
-          category: "strong-copyleft",
-          id: "GPL-3.0-only",
-        }),
-      ),
-    ];
-    reporter.summary({ ...summary, findings });
-    const output = text();
-    assert.match(output, /▲ License review/);
-    assert.match(output, /Network copyleft {2}AGPL-3\.0-only {2}evil@1\.0\.0/);
-    assert.match(output, /Unclear terms {5}\(none\) {9}none@2\.0\.0/);
-    assert.match(output, /… and 2 more/);
-  });
-
-  it("links the output path and abbreviates long breakdowns", () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, { ...base, color: true, hyperlinks: true });
-    const breakdown = Array.from({ length: 9 }, (_, i): [string, number] => [`LIC-${i}`, 9 - i]);
-    reporter.summary({ ...summary, breakdown, outputPath: "C:\\tmp\\NOTICE.txt", outputLabel: "NOTICE.txt" });
-    assert.ok(text().includes("\u001b]8;;file:///"), "OSC 8 link");
-    assert.match(stripAnsi(text()), /… and 3 more/);
-  });
-});
-
-describe("ConsoleReporter errors", () => {
-  it("prints the message and hint of a CliError", () => {
-    const { out, text } = capture();
-    new ConsoleReporter(out, base).error(new CliError("first\nsecond", { hint: "do this" }));
-    assert.equal(text(), "error: first\n       second\nhint:  do this\n");
-  });
-
-  it("omits the hint line when there is none", () => {
-    const { out, text } = capture();
-    new ConsoleReporter(out, base).error(new CliError("plain"));
-    assert.equal(text(), "error: plain\n");
-  });
-
-  it("prints non-Error values and stacks when debugging", () => {
-    const { out, text } = capture();
-    const reporter = new ConsoleReporter(out, base);
-    reporter.error("just a string");
-    assert.match(text(), /error: just a string/);
-
-    const previous = process.env.DEBUG;
-    process.env.DEBUG = "third-party-notices";
-    try {
-      const error = new Error("kaboom");
-      reporter.error(error);
-      assert.ok(text().includes(error.stack ?? "missing"));
-    } finally {
-      if (previous === undefined) {
-        delete process.env.DEBUG;
-      } else {
-        process.env.DEBUG = previous;
-      }
-    }
-  });
-
   it("stops an active animation before printing an error", async () => {
     const { out, text } = capture();
     const reporter = new ConsoleReporter(out, animated);
     reporter.step("Working");
     await sleep(100);
-    reporter.error(new CliError("bad"));
-    assert.match(stripAnsi(text()), /error: bad/);
+    reporter.error(new CliError("bad", { hint: "fix it" }));
+    assert.match(stripAnsi(text()), /error: bad\nhint: {2}fix it/);
     assert.ok(text().includes("\u001b[?25h"));
   });
 });

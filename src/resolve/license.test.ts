@@ -1,71 +1,37 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { describe, it } from "node:test";
+import type { ResolvedPackage } from "../core/types.js";
+import { CliError } from "../errors.js";
 import { tempDir, writeFiles } from "../testing/fixtures.js";
-import { isLicenseFileName, isNoticeFileName, readLicense } from "./license.js";
-import { renderTemplate, SPDX_TEMPLATE_IDS, templateIdFor } from "./templates.js";
+import { licenseFor, readLicense } from "./license.js";
 
-describe("license file names", () => {
-  it("matches the conventions GitHub recognizes", () => {
-    for (const name of [
-      "LICENSE",
-      "LICENCE",
-      "UNLICENSE",
-      "license.md",
-      "LICENSE.markdown",
-      "LICENSE.txt",
-      "LICENSE.html",
-      "LICENSE.rst",
-      "LICENSE.docs",
-      "LICENSE-MIT",
-      "LICENSE_APACHE.txt",
-      "LICENSE-2.0.txt",
-      "MIT-LICENSE",
-      "MIT-LICENSE.txt",
-      "apache_license.md",
-      "COPYING",
-      "COPYING.txt",
-      "COPYING.LESSER",
-      "COPYING-GPL",
-      "GPL-COPYING",
-      "COPYRIGHT",
-      "COPYRIGHT.txt",
-      "COPYRIGHT-HOLDERS.md",
-      "OFL",
-      "OFL.txt",
-      "PATENTS",
-      "PATENTS.md",
-    ]) {
-      assert.equal(isLicenseFileName(name), true, name);
-    }
+describe("readLicense", () => {
+  it("reads the best match first, merges duplicates, and collects NOTICE files", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, {
+      "LICENSE-MIT": "MIT text\r\n",
+      "LICENSE.md": "MIT text",
+      COPYING: "Other text",
+      NOTICE: "Notice text",
+      "package.json": "{}",
+    });
+    assert.deepEqual(await readLicense(dir), { text: "MIT text\n\nOther text", notices: ["Notice text"] });
   });
 
-  it("rejects code, data, binaries and look-alikes", () => {
-    for (const name of [
-      "license.js",
-      "license.ts",
-      "license.json",
-      "license-checker.json",
-      "license.xml",
-      "license.sh",
-      "license.go",
-      "LICENSE.spdx",
-      "LICENSE.png",
-      "licenser.txt",
-      "sublicense.txt",
-      "unlicensed.txt",
-      "LICENSE.tar.gz",
-      "BSD-3-LICENSE",
-      "GPL-COPYRIGHT",
-      "OFL-FAQ.txt",
-      "patents-list.txt",
-      "README.md",
-      "index.js",
-    ]) {
-      assert.equal(isLicenseFileName(name), false, name);
-    }
+  it("reads REUSE files from a LICENSES directory by SPDX id", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, {
+      "LICENSES/Apache-2.0.txt": "apache",
+      "LICENSES/LicenseRef-custom.md": "custom",
+      "LICENSES/notes.js": "ignored",
+      "LICENSES/data.bin": "ignored",
+      "LICENSES/sub/skipped.txt": "nested",
+    });
+    assert.equal((await readLicense(dir)).text, "apache\n\ncustom");
   });
 
-  it("orders matches by GitHub's licensee score", async (t) => {
+  it("orders matches by Licensee's score", async (t) => {
     const dir = await tempDir(t);
     await writeFiles(dir, {
       PATENTS: "patents",
@@ -77,83 +43,44 @@ describe("license file names", () => {
       LICENSE: "license",
     });
     assert.equal(
-      (await readLicense({ dir })).text,
+      (await readLicense(dir)).text,
       "license\n\nlicense-md\n\ncopying\n\nmit-license\n\nofl\n\ncopyright\n\npatents",
     );
   });
 
-  it("reads REUSE files from a LICENSES directory by SPDX id", async (t) => {
-    const dir = await tempDir(t);
-    await writeFiles(dir, {
-      "LICENSES/Apache-2.0.txt": "apache",
-      "LICENSES/LicenseRef-custom.md": "custom",
-      "LICENSES/notes.js": "ignored",
-      "LICENSES/data.bin": "bin",
-    });
-    assert.equal((await readLicense({ dir })).text, "apache\n\ncustom");
-  });
-
-  it("recognizes notice files", () => {
-    assert.equal(isNoticeFileName("NOTICE"), true);
-    assert.equal(isNoticeFileName("NOTICE.txt"), true);
-    assert.equal(isNoticeFileName("notices.js"), false);
-  });
-});
-
-describe("readLicense", () => {
-  it("reads the license, appends distinct files and collects notices", async (t) => {
-    const dir = await tempDir(t);
-    await writeFiles(dir, {
-      "LICENSE-MIT": "MIT text\r\n",
-      "LICENSE.md": "MIT text",
-      COPYING: "Other text",
-      NOTICE: "Notice text",
-      "package.json": "{}",
-    });
-    const info = await readLicense({ dir });
-    assert.equal(info.text, "MIT text\n\nOther text");
-    assert.deepEqual(info.notices, ["Notice text"]);
-  });
-
-  it("reads files from a licenses directory", async (t) => {
-    const dir = await tempDir(t);
-    await writeFiles(dir, {
-      "licenses/a.txt": "A",
-      "licenses/b.js": "ignored",
-      "LICENSES/sub/skipped.txt": "nested",
-      UNLICENSE: "Public domain",
-      "NOTICES.md": "n",
-    });
-    const text = (await readLicense({ dir })).text;
-    assert.ok(text?.includes("A"));
-    assert.ok(text?.includes("Public domain"));
-    assert.ok(!text?.includes("ignored"));
-  });
-
   it("reports nothing when no license is shipped", async (t) => {
     const dir = await tempDir(t);
-    await writeFiles(dir, { "index.js": "" });
-    assert.deepEqual(await readLicense({ dir }), { text: undefined, notices: [] });
+    await writeFiles(dir, { "index.js": "", "license.js": "code" });
+    assert.deepEqual(await readLicense(dir), { text: undefined, notices: [] });
   });
 });
 
-describe("templates", () => {
-  it("matches bundled SPDX ids exactly", () => {
-    assert.equal(templateIdFor("MIT"), "MIT");
-    assert.equal(templateIdFor("(isc)"), "ISC");
-    assert.equal(templateIdFor("MIT OR Apache-2.0"), undefined);
-    assert.equal(templateIdFor(undefined), undefined);
+describe("licenseFor", () => {
+  const pkg = (dir: string): ResolvedPackage => ({
+    name: "p",
+    version: "1.2.3",
+    dir,
+    license: undefined,
+    homepage: undefined,
+    repository: undefined,
+    author: undefined,
   });
 
-  it("fills in the copyright holder", () => {
-    assert.match(renderTemplate("MIT", "Ada Lovelace"), /Copyright \(c\) Ada Lovelace/);
-    assert.match(renderTemplate("ISC", undefined), /the package authors/);
-    for (const id of SPDX_TEMPLATE_IDS) {
-      assert.match(renderTemplate(id, "X"), /Copyright \(c\) X/);
-    }
+  it("prefers a replacement by name@version, then by name, over the package's own files", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, { LICENSE: "own", "exact.txt": "by version", "loose.txt": "by name" });
+    const exact = join(dir, "exact.txt");
+    const loose = join(dir, "loose.txt");
+    assert.equal((await licenseFor(pkg(dir), { "p@1.2.3": exact, p: loose })).text, "by version");
+    assert.equal((await licenseFor(pkg(dir), { p: loose })).text, "by name");
+    assert.equal((await licenseFor(pkg(dir), {})).text, "own");
   });
 
-  it("throws for ids without a bundled template", () => {
-    assert.throws(() => renderTemplate("GPL-3.0-only", "X"), /No bundled template/);
+  it("fails when the replacement file is missing", async (t) => {
+    const dir = await tempDir(t);
+    await assert.rejects(
+      licenseFor(pkg(dir), { p: join(dir, "missing.txt") }),
+      (error: unknown) => error instanceof CliError && /Replacement license for p not found/.test(error.message),
+    );
   });
 });

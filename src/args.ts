@@ -1,8 +1,72 @@
 import { parseArgs } from "node:util";
-import { didYouMean, UsageError } from "./errors.js";
-import { CATEGORY_CHOICES, type Category, expandCategories } from "./policy.js";
-import type { Style } from "./ui/ansi.js";
-import { padEnd } from "./ui/ansi.js";
+import { CATEGORY_CHOICES, type Category, expandCategories } from "./core/policy.js";
+import { didYouMean } from "./core/suggest.js";
+import type { LineEnding } from "./core/types.js";
+import { UsageError } from "./errors.js";
+
+export interface OptionDef {
+  name: string;
+  short?: string;
+  type: "string" | "boolean";
+  /** May be given more than once. */
+  multiple?: boolean;
+  /** Placeholder shown in help, such as `<path>`. */
+  value?: string;
+  description: string;
+}
+
+/** The single source of truth for both parsing and `--help`. */
+export const OPTIONS: readonly OptionDef[] = [
+  {
+    name: "input",
+    short: "i",
+    type: "string",
+    multiple: true,
+    value: "<paths...>",
+    description: "package.json files to scan (default: ./package.json)",
+  },
+  {
+    name: "output",
+    short: "o",
+    type: "string",
+    value: "<path>",
+    description: 'output file, or "-" for stdout (default: ./third-party-licenses.txt)',
+  },
+  {
+    name: "config",
+    short: "c",
+    type: "string",
+    value: "<path>",
+    description: "config file (auto-detected when omitted)",
+  },
+  { name: "overwrite", type: "boolean", description: "replace an existing output file without asking" },
+  {
+    name: "eol",
+    type: "string",
+    value: "<lf|crlf>",
+    description: "line endings of the output file (default: your OS)",
+  },
+  { name: "ci", type: "boolean", description: "never prompt; exit 1 if user input would be needed" },
+  {
+    name: "allow-missing",
+    type: "boolean",
+    description: "don't prompt or fail for packages with no license text: use an SPDX template or skip",
+  },
+  {
+    name: "fail-on",
+    type: "string",
+    multiple: true,
+    value: "<categories>",
+    description: "exit 1 if a package falls in these license categories (copyleft, any, or a name)",
+  },
+  { name: "no-spinner", type: "boolean", description: "disable the animated spinner" },
+  { name: "omit-versions", type: "boolean", description: 'list "pkg" instead of "pkg@1.2.3"' },
+  { name: "no-color", type: "boolean", description: "disable colors (also honors NO_COLOR)" },
+  { name: "quiet", short: "q", type: "boolean", description: "print nothing except errors" },
+  { name: "verbose", type: "boolean", description: "show extra notes, such as packages that ship no license file" },
+  { name: "version", short: "v", type: "boolean", description: "print the version" },
+  { name: "help", short: "h", type: "boolean", description: "show this help" },
+];
 
 export interface Args {
   inputs: string[];
@@ -10,7 +74,7 @@ export interface Args {
   config: string | undefined;
   overwrite: boolean;
   allowMissing: boolean;
-  eol: "lf" | "crlf" | undefined;
+  eol: LineEnding | undefined;
   ci: boolean;
   failOn: Category[];
   noSpinner: boolean;
@@ -22,195 +86,97 @@ export interface Args {
   version: boolean;
 }
 
-interface OptionSpec {
-  type: "string" | "boolean";
-  short?: string;
-  multiple?: boolean;
-}
-
-const OPTIONS = {
-  input: { type: "string", short: "i", multiple: true },
-  output: { type: "string", short: "o" },
-  config: { type: "string", short: "c" },
-  overwrite: { type: "boolean" },
-  "allow-missing": { type: "boolean" },
-  eol: { type: "string" },
-  ci: { type: "boolean" },
-  "fail-on": { type: "string", multiple: true },
-  "no-spinner": { type: "boolean" },
-  "omit-versions": { type: "boolean" },
-  "no-color": { type: "boolean" },
-  quiet: { type: "boolean", short: "q" },
-  verbose: { type: "boolean" },
-  version: { type: "boolean", short: "v" },
-  help: { type: "boolean", short: "h" },
-} as const satisfies Record<string, OptionSpec>;
-
-/** Lets `-i a b c` take several paths, like variadic CLI options. */
-export function expandVariadicInputs(argv: string[]): string[] {
+/** Lets `-i a b c` take several paths, as variadic options do in other CLIs. */
+export function expandVariadicInputs(argv: readonly string[]): string[] {
   const out: string[] = [];
   let collecting = false;
-  let collected = 0;
-  const flush = (): void => {
-    // A bare -i/--input with no values still needs to surface a "requires a value" error.
-    if (collecting && collected === 0) {
-      out.push("--input");
-    }
-    collecting = false;
-    collected = 0;
+  let valueSeen = false;
+  const endCollecting = () => {
+    // A bare `-i` still reaches the parser so it can report the missing value.
+    if (collecting && !valueSeen) out.push("--input");
+    collecting = valueSeen = false;
   };
   for (const token of argv) {
     if (token === "-i" || token === "--input") {
-      flush();
+      endCollecting();
       collecting = true;
     } else if (collecting && !token.startsWith("-")) {
       out.push("--input", token);
-      collected++;
+      valueSeen = true;
     } else {
-      flush();
+      endCollecting();
       out.push(token);
     }
   }
-  flush();
+  endCollecting();
   return out;
 }
 
-function runParse(argv: string[]) {
-  return parseArgs({
+/** Parses the command line, throwing a `UsageError` for anything unrecognized or malformed. */
+export function parseCliArgs(argv: readonly string[]): Args {
+  const known = OPTIONS.map((option) => option.name);
+  const { values, tokens } = parseArgs({
     args: expandVariadicInputs(argv),
-    options: OPTIONS,
+    options: Object.fromEntries(
+      OPTIONS.map(({ name, short, type, multiple }) => [
+        name,
+        { type, ...(short && { short }), ...(multiple && { multiple }) },
+      ]),
+    ),
     allowPositionals: true,
     strict: false,
     tokens: true,
   });
-}
 
-export function parseCliArgs(argv: string[]): Args {
-  const known = new Set(Object.keys(OPTIONS));
-  const parsed = runParse(argv);
-
-  for (const token of parsed.tokens ?? []) {
-    if (token.kind === "option" && !known.has(token.name)) {
-      const suggestion = didYouMean(token.name, [...known]);
+  for (const token of tokens) {
+    if (token.kind === "positional") {
+      throw new UsageError(`Unexpected argument "${token.value}"`, "pass input files with --input <paths...>");
+    }
+    if (token.kind === "option" && !known.includes(token.name)) {
+      const suggestion = didYouMean(token.name, known);
       throw new UsageError(
         `Unknown option "${token.rawName}"`,
         suggestion ? `did you mean --${suggestion}?` : "run with --help to see all options",
       );
     }
-    if (token.kind === "positional") {
-      throw new UsageError(`Unexpected argument "${token.value}"`, "pass input files with --input <paths...>");
+  }
+
+  for (const { name, type } of OPTIONS) {
+    const value = values[name];
+    if (value !== undefined && typeof (Array.isArray(value) ? value[0] : value) !== type) {
+      throw new UsageError(`--${name} ${type === "string" ? "requires a value" : "does not take a value"}`);
     }
   }
 
-  const { values } = parsed;
-  const typed = (key: keyof typeof OPTIONS, type: "string" | "boolean"): void => {
-    const value = values[key];
-    if (
-      value !== undefined &&
-      (type === "string" ? typeof value !== "string" && !Array.isArray(value) : typeof value !== "boolean")
-    ) {
-      throw new UsageError(`--${key} ${type === "string" ? "requires a value" : "does not take a value"}`);
-    }
-  };
-  for (const [key, spec] of Object.entries(OPTIONS)) {
-    typed(key as keyof typeof OPTIONS, spec.type);
-  }
+  const text = (name: string) => values[name] as string | undefined;
+  const flag = (name: string) => values[name] === true;
 
-  const failOnValues = ((values["fail-on"] as string[] | undefined) ?? []).flatMap((value) => value.split(","));
-  const failOn = expandCategories(failOnValues);
-  if (failOn === undefined) {
+  const failOn = expandCategories(
+    ((values["fail-on"] as string[] | undefined) ?? []).flatMap((value) => value.split(",")),
+  );
+  if (!failOn) {
     throw new UsageError("Invalid --fail-on value", `use one or more of: ${CATEGORY_CHOICES.join(", ")}`);
   }
-
-  const eol = values.eol as string | undefined;
+  const eol = text("eol");
   if (eol !== undefined && eol !== "lf" && eol !== "crlf") {
     throw new UsageError(`Invalid --eol "${eol}"`, 'use "lf" or "crlf"');
   }
 
   return {
     inputs: (values.input as string[] | undefined) ?? [],
-    output: values.output as string | undefined,
-    config: values.config as string | undefined,
-    overwrite: values.overwrite === true,
-    allowMissing: values["allow-missing"] === true,
-    eol: eol as Args["eol"],
-    ci: values.ci === true,
+    output: text("output"),
+    config: text("config"),
+    overwrite: flag("overwrite"),
+    allowMissing: flag("allow-missing"),
+    eol,
+    ci: flag("ci"),
     failOn,
-    noSpinner: values["no-spinner"] === true,
-    omitVersions: values["omit-versions"] === true,
-    noColor: values["no-color"] === true,
-    quiet: values.quiet === true,
-    verbose: values.verbose === true,
-    help: values.help === true,
-    version: values.version === true,
+    noSpinner: flag("no-spinner"),
+    omitVersions: flag("omit-versions"),
+    noColor: flag("no-color"),
+    quiet: flag("quiet"),
+    verbose: flag("verbose"),
+    help: flag("help"),
+    version: flag("version"),
   };
-}
-
-export function helpText(style: Style, columns: number): string {
-  const options: Array<[flags: string, description: string]> = [
-    ["-i, --input <paths...>", "package.json files to scan (default: ./package.json)"],
-    ["-o, --output <path>", 'output file, or "-" for stdout (default: ./third-party-licenses.txt)'],
-    ["-c, --config <path>", "config file (auto-detected when omitted)"],
-    ["    --overwrite", "replace an existing output file without asking"],
-    ["    --eol <lf|crlf>", "line endings of the output file (default: your OS)"],
-    ["    --ci", "never prompt; exit 1 if user input would be needed"],
-    ["    --allow-missing", "don't prompt or fail for packages with no license text: use an SPDX template or skip"],
-    ["    --fail-on <categories>", "exit 1 if a package falls in these license categories (copyleft, any, or a name)"],
-    ["    --no-spinner", "disable the animated spinner"],
-    ["    --omit-versions", 'list "pkg" instead of "pkg@1.2.3"'],
-    ["    --no-color", "disable colors (also honors NO_COLOR)"],
-    ["-q, --quiet", "print nothing except errors"],
-    ["    --verbose", "show extra notes, such as packages that ship no license file"],
-    ["-v, --version", "print the version"],
-    ["-h, --help", "show this help"],
-  ];
-  const width = Math.max(...options.map(([flags]) => flags.length));
-  const wrapAt = Math.max(40, Math.min(columns, 100) - width - 6);
-
-  const rows = options.map(([flags, description]) => {
-    const [first = "", ...rest] = wrap(description, wrapAt);
-    const lines = [`  ${style.cyan(padEnd(flags, width))}  ${first}`];
-    for (const line of rest) {
-      lines.push(`  ${" ".repeat(width)}  ${line}`);
-    }
-    return lines.join("\n");
-  });
-
-  const examples = [
-    ["third-party-notices", "scan ./package.json, write third-party-licenses.txt"],
-    ["tpn -i app/package.json lib/package.json -o NOTICE.txt", "several projects, one file"],
-    ["tpn --ci --overwrite", "non-interactive, for pipelines"],
-  ];
-  const exampleWidth = Math.max(...examples.map(([cmd]) => (cmd as string).length));
-
-  return [
-    `${style.bold("Usage")}  third-party-notices ${style.dim("[options]")}   ${style.dim("(alias: tpn)")}`,
-    "",
-    style.bold("Options"),
-    ...rows,
-    "",
-    style.bold("Examples"),
-    ...examples.map(
-      ([cmd, note]) => `  ${style.dim("$")} ${padEnd(cmd as string, exampleWidth)}  ${style.dim(note as string)}`,
-    ),
-    "",
-    style.bold("Config"),
-    `  ${style.dim('third-party-notices.config.json | .mjs, or a "thirdPartyNotices" key in package.json')}`,
-    "",
-  ].join("\n");
-}
-
-function wrap(text: string, width: number): string[] {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(" ")) {
-    if (line && line.length + word.length + 1 > width) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
 }

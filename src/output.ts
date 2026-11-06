@@ -1,7 +1,11 @@
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { EOL } from "node:os";
 import { dirname } from "node:path";
+import type { LineEnding } from "./core/types.js";
 
-/** Writes via a temp file and rename so a failed run never leaves a truncated output. */
+export const systemLineEnding = (): LineEnding => (EOL === "\r\n" ? "crlf" : "lf");
+
+/** Writes through a temp file and a rename, so a failure never leaves a truncated output. */
 export async function writeFileAtomic(path: string, text: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temp = `${path}.${process.pid}.tmp`;

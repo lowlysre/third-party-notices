@@ -1,312 +1,156 @@
-import { relative, resolve } from "node:path";
+import { relative } from "node:path";
 import type { Args } from "./args.js";
-import { type Config, loadConfig, matchesPackage } from "./config.js";
+import { loadConfig } from "./config.js";
+import { groupLicenses, licenseBreakdown } from "./core/group.js";
+import { missingFileNote, packageLabel, policyError, unresolvedError } from "./core/messages.js";
+import { matchesAny } from "./core/patterns.js";
+import { reviewPackages } from "./core/policy.js";
+import { renderDocument } from "./core/render.js";
+import { resolveSettings, type Settings } from "./core/settings.js";
+import { generateLicense } from "./core/templates.js";
+import type { LicenseChoice, LicensedPackage, ResolvedPackage } from "./core/types.js";
 import { CliError } from "./errors.js";
-import { pathExists, readText } from "./fs.js";
-import { groupLicenses, type LicensedPackage } from "./group.js";
-import { writeFileAtomic } from "./output.js";
-import { CATEGORIES, CATEGORY_LABELS, type Category, type Finding, reviewLicense } from "./policy.js";
-import { defaultLineEnding, renderDocument } from "./render.js";
-import { readLicense } from "./resolve/license.js";
-import { renderTemplate, templateIdFor } from "./resolve/templates.js";
-import { type ResolvedPackage, resolveDependencies } from "./resolve/tree.js";
-import { confirm, type PromptIO, readLine, readMultiline, select } from "./ui/prompt.js";
-import type { Reporter, WritableLike } from "./ui/reporter.js";
+import { pathExists, readExisting } from "./fs.js";
+import { systemLineEnding, writeFileAtomic } from "./output.js";
+import { mapPool } from "./pool.js";
+import { licenseFor } from "./resolve/license.js";
+import { resolveDependencies } from "./resolve/tree.js";
+import { askForLicense } from "./ui/license-prompt.js";
+import { confirm, type PromptIO } from "./ui/prompt.js";
+import type { Reporter, Step, WritableLike } from "./ui/reporter.js";
 
 export interface RunDeps {
   cwd: string;
   version: string;
   reporter: Reporter;
   stdout: WritableLike;
-  /** Present only when stdin/stderr are interactive. */
+  /** Present only when both stdin and stderr are interactive. */
   prompt: PromptIO | undefined;
 }
 
-const CONCURRENCY = 16;
+const READ_CONCURRENCY = 16;
 
-export async function run(args: Args, deps: RunDeps): Promise<void> {
-  const startedAt = Date.now();
-  const { cwd, reporter } = deps;
-  await reporter.banner(deps.version);
-
-  const { config } = await loadConfig(cwd, args.config);
-
-  const inputs =
-    args.inputs.length > 0
-      ? args.inputs.map((p) => resolve(cwd, p))
-      : (config.inputs ?? [resolve(cwd, "package.json")]);
-  const output = args.output
-    ? args.output === "-"
-      ? "-"
-      : resolve(cwd, args.output)
-    : (config.output ?? resolve(cwd, "third-party-licenses.txt"));
-  const lineEnding = args.eol ?? config.lineEnding ?? defaultLineEnding();
-  const omitVersions = args.omitVersions || config.omitVersions === true;
-  const overwrite = args.overwrite || config.overwrite === true;
-  const allowMissing = args.allowMissing || config.allowMissing === true;
-  const prompt = args.ci ? undefined : deps.prompt;
-
-  if (output !== "-" && !overwrite && (await pathExists(output))) {
-    const shown = relative(cwd, output) || output;
-    if (!prompt) {
-      throw new CliError(`${shown} already exists`, { hint: "pass --overwrite to replace it" });
-    }
-    if (!(await confirm(prompt, `${shown} already exists. Overwrite?`))) {
-      throw new CliError("Aborted: output file left untouched", { exitCode: 1 });
-    }
-  }
-
-  const resolving = reporter.step("Resolving dependencies");
-  let packages: ResolvedPackage[];
+/** Runs a reporter step, marking it failed if the work throws. */
+async function withStep<T>(reporter: Reporter, label: string, work: (step: Step) => Promise<T>): Promise<T> {
+  const step = reporter.step(label);
   try {
-    const result = await resolveDependencies(inputs);
-    packages = result.packages.filter(
-      (pkg) => !config.exclude.some((pattern) => matchesPackage(pattern, pkg.name, pkg.version)),
-    );
-    const excluded = result.packages.length - packages.length;
-    resolving.succeed(`${packages.length} packages${excluded > 0 ? `, ${excluded} excluded` : ""}`);
+    return await work(step);
   } catch (error) {
-    resolving.fail();
+    step.fail();
     throw error;
   }
+}
 
-  const reading = reporter.step("Reading licenses");
+/** Refuses to replace an existing output unless allowed, asking first when a terminal is available. */
+async function guardOverwrite(settings: Settings, prompt: PromptIO | undefined, cwd: string): Promise<void> {
+  if (settings.output === "-" || settings.overwrite || !(await pathExists(settings.output))) return;
+  const shown = relative(cwd, settings.output) || settings.output;
+  if (!prompt) throw new CliError(`${shown} already exists`, { hint: "pass --overwrite to replace it" });
+  if (!(await confirm(prompt, `${shown} already exists. Overwrite?`))) {
+    throw new CliError("Aborted: output file left untouched");
+  }
+}
+
+async function findPackages(settings: Settings, step: Step): Promise<ResolvedPackage[]> {
+  const { packages } = await resolveDependencies(settings.inputs);
+  const kept = packages.filter((pkg) => !matchesAny(settings.exclude, pkg.name, pkg.version));
+  const excluded = packages.length - kept.length;
+  step.succeed(`${kept.length} packages${excluded > 0 ? `, ${excluded} excluded` : ""}`);
+  return kept;
+}
+
+async function readLicenses(packages: readonly ResolvedPackage[], settings: Settings, step: Step) {
+  let done = 0;
+  const infos = await mapPool(packages, READ_CONCURRENCY, async (pkg) => {
+    const info = await licenseFor(pkg, settings.replace);
+    step.update(`${++done}/${packages.length}  ${pkg.name}`);
+    return info;
+  });
   const licensed: LicensedPackage[] = [];
   const unresolved: ResolvedPackage[] = [];
-  const generated: string[] = [];
-  try {
-    let done = 0;
-    const found = await mapPool(packages, CONCURRENCY, async (pkg) => {
-      const info = await readLicenseFor(pkg, config);
-      reading.update(`${++done}/${packages.length}  ${pkg.name}`);
-      return info;
-    });
-    for (const [index, info] of found.entries()) {
-      const pkg = packages[index] as ResolvedPackage;
-      if (info.text === undefined) {
-        unresolved.push(pkg);
-      } else {
-        licensed.push({ name: pkg.name, version: pkg.version, text: info.text, notices: info.notices });
-      }
-    }
-    reading.succeed(unresolved.length > 0 ? `${unresolved.length} need attention` : `${packages.length} read`);
-  } catch (error) {
-    reading.fail();
-    throw error;
+  for (const [index, { text, notices }] of infos.entries()) {
+    const pkg = packages[index] as ResolvedPackage;
+    if (text === undefined) unresolved.push(pkg);
+    else licensed.push({ name: pkg.name, version: pkg.version, text, notices });
   }
+  step.succeed(unresolved.length > 0 ? `${unresolved.length} need attention` : `${packages.length} read`);
+  return { licensed, unresolved };
+}
 
-  if (unresolved.length > 0) {
-    if (!allowMissing && !prompt) {
-      throw unresolvedError(unresolved);
-    }
-    for (const pkg of unresolved) {
-      const label = `${pkg.name}@${pkg.version}`;
-      const answer = allowMissing
-        ? fallbackLicense(pkg)
-        : await reporter.suspend(() => askForLicense(prompt as PromptIO, pkg));
-      if (answer === undefined) {
-        reporter.warn(`Skipped ${label}: no license text`);
-      } else {
-        licensed.push({ name: pkg.name, version: pkg.version, text: answer.text, notices: [] });
-        if (answer.generated) generated.push(label);
-      }
-      reporter.note(`${label} ${missingFileNote(pkg)}`);
-    }
-  }
-  for (const label of generated) {
-    reporter.warn(`${label}: license text generated from an SPDX template, please review`);
-  }
+/** A template when the declared license has one, else nothing (the package is skipped). */
+function templateFallback(pkg: ResolvedPackage): LicenseChoice {
+  const text = generateLicense(pkg.license, pkg.author);
+  return text ? { text, generated: true } : undefined;
+}
 
-  const findings = reviewPackages(packages, config.allow);
-  const blocked = new Set<Category>([...args.failOn, ...config.failOn]);
+/** Fills in packages with no license text: automatically with `allowMissing`, by prompting on a terminal, else fails. */
+async function fillMissing(
+  unresolved: readonly ResolvedPackage[],
+  settings: Settings,
+  prompt: PromptIO | undefined,
+  reporter: Reporter,
+): Promise<LicensedPackage[]> {
+  if (unresolved.length === 0) return [];
+  const decide = settings.allowMissing
+    ? async (pkg: ResolvedPackage) => templateFallback(pkg)
+    : prompt && ((pkg: ResolvedPackage) => reporter.suspend(() => askForLicense(prompt, pkg)));
+  if (!decide) throw unresolvedError(unresolved);
 
-  const rendering = reporter.step("Writing notices");
-  let document: string;
-  try {
-    const appended = await Promise.all(config.append.map((file) => readAppendix(file)));
-    const groups = groupLicenses(licensed, omitVersions);
-    document = renderDocument({ groups, appended, lineEnding });
-    if (output === "-") {
-      deps.stdout.write(document);
+  const licensed: LicensedPackage[] = [];
+  for (const pkg of unresolved) {
+    const choice = await decide(pkg);
+    if (!choice) {
+      reporter.warn(`Skipped ${packageLabel(pkg)}: no license text`);
     } else {
-      await writeFileAtomic(output, document);
+      licensed.push({ name: pkg.name, version: pkg.version, text: choice.text, notices: [] });
+      if (choice.generated) {
+        reporter.warn(`${packageLabel(pkg)}: license text generated from an SPDX template, please review`);
+      }
     }
-    rendering.succeed(`${groups.length} unique licenses`);
-
-    reporter.summary({
-      packages: licensed.length,
-      uniqueLicenses: groups.length,
-      breakdown: breakdown(packages),
-      outputPath: output === "-" ? undefined : output,
-      outputLabel: output === "-" ? "stdout" : relative(cwd, output) || output,
-      bytes: Buffer.byteLength(document),
-      elapsedMs: Date.now() - startedAt,
-      findings,
-    });
-  } catch (error) {
-    rendering.fail();
-    throw error;
+    reporter.note(`${packageLabel(pkg)} ${missingFileNote(pkg)}`);
   }
-
-  const failing = findings.filter((finding) => blocked.has(finding.category));
-  if (failing.length > 0) {
-    throw policyError(failing);
-  }
+  return licensed;
 }
 
-/** Flags packages by declared license, most severe first. `allow` patterns suppress a package. */
-function reviewPackages(packages: ResolvedPackage[], allow: string[]): Finding[] {
-  const findings: Finding[] = [];
-  for (const pkg of packages) {
-    if (allow.some((pattern) => matchesPackage(pattern, pkg.name, pkg.version))) {
-      continue;
-    }
-    const review = reviewLicense(pkg.license);
-    if (review) {
-      findings.push({ name: pkg.name, version: pkg.version, license: pkg.license, ...review });
-    }
-  }
-  const severity = (finding: Finding): number => CATEGORIES.indexOf(finding.category);
-  return findings.sort(
-    (a, b) => severity(b) - severity(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) || (a.name < b.name ? -1 : 1),
+/** Finds the dependencies, collects their license texts, writes the notice file and prints a summary. */
+export async function run(args: Args, deps: RunDeps): Promise<void> {
+  const startedAt = Date.now();
+  const { cwd, reporter, stdout } = deps;
+  await reporter.banner(deps.version);
+
+  const settings = resolveSettings(args, await loadConfig(cwd, args.config), cwd, systemLineEnding());
+  const prompt = args.ci ? undefined : deps.prompt;
+  await guardOverwrite(settings, prompt, cwd);
+
+  const packages = await withStep(reporter, "Resolving dependencies", (step) => findPackages(settings, step));
+  const { licensed, unresolved } = await withStep(reporter, "Reading licenses", (step) =>
+    readLicenses(packages, settings, step),
   );
-}
+  licensed.push(...(await fillMissing(unresolved, settings, prompt, reporter)));
 
-function policyError(failing: Finding[]): CliError {
-  const categories = [...new Set(failing.map((finding) => CATEGORY_LABELS[finding.category]))].join(", ");
-  const shown = failing.slice(0, 5).map((finding) => `  - ${finding.name}@${finding.version} (${finding.id})`);
-  const more = failing.length > shown.length ? [`  …and ${failing.length - shown.length} more`] : [];
-  return new CliError(
-    `${failing.length} package${failing.length === 1 ? "" : "s"} in blocked license categories (${categories}):\n${[...shown, ...more].join("\n")}`,
-    { hint: 'review them, or list them under "allow" in the config file' },
-  );
-}
-
-async function readLicenseFor(
-  pkg: ResolvedPackage,
-  config: Config,
-): Promise<{ text: string | undefined; notices: string[] }> {
-  const replacement = config.replace[`${pkg.name}@${pkg.version}`] ?? config.replace[pkg.name];
-  if (replacement !== undefined) {
-    if (!(await pathExists(replacement))) {
-      throw new CliError(`Replacement license for ${pkg.name} not found: ${replacement}`);
-    }
-    return { text: await readText(replacement), notices: [] };
-  }
-  return readLicense(pkg);
-}
-
-async function readAppendix(file: string): Promise<string> {
-  if (!(await pathExists(file))) {
-    throw new CliError(`Appended file not found: ${file}`);
-  }
-  return readText(file);
-}
-
-function contactUrl(pkg: ResolvedPackage): string | undefined {
-  return pkg.homepage ?? pkg.repository;
-}
-
-/** "declares MIT but ships no license file; consider asking the maintainers to add one (url)" */
-function missingFileNote(pkg: ResolvedPackage): string {
-  const url = contactUrl(pkg);
-  const state = pkg.license
-    ? `declares ${pkg.license} but ships no license file`
-    : "declares no license and ships no license file";
-  return `${state}; consider asking the maintainers to add one${url ? ` (${url})` : ""}`;
-}
-
-function unresolvedError(unresolved: ResolvedPackage[]): CliError {
-  const shown = unresolved
-    .slice(0, 10)
-    .map((pkg) => `  - ${pkg.name}@${pkg.version}${pkg.license ? ` (declares ${pkg.license})` : ""}`);
-  const more = unresolved.length > shown.length ? [`  …and ${unresolved.length - shown.length} more`] : [];
-  return new CliError(
-    `No license text found for ${unresolved.length} package${unresolved.length === 1 ? "" : "s"}:\n${[...shown, ...more].join("\n")}`,
-    {
-      hint: 'supply the text with "replace" in the config file, exclude the package, pass --allow-missing, run without --ci to be prompted, or ask the maintainers to ship a license file',
-    },
-  );
-}
-
-type Answer = { text: string; generated: boolean } | undefined;
-
-/** Non-interactive handling of a package with no license text: a bundled template when one fits, else skip. */
-function fallbackLicense(pkg: ResolvedPackage): Answer {
-  const templateId = templateIdFor(pkg.license);
-  return templateId ? { text: renderTemplate(templateId, pkg.author), generated: true } : undefined;
-}
-
-async function askForLicense(io: PromptIO, pkg: ResolvedPackage): Promise<Answer> {
-  const { style, symbols, output } = io;
-  output.write(
-    `\n${style.yellow(symbols.warn)} ${style.bold(`No license text found for ${pkg.name}@${pkg.version}`)}\n`,
-  );
-  const details = [pkg.license ? `declares ${pkg.license}` : "no license field", contactUrl(pkg)]
-    .filter(Boolean)
-    .join(` ${symbols.bullet} `);
-  output.write(`  ${style.dim(details)}\n\n`);
-
-  const templateId = templateIdFor(pkg.license);
-  for (;;) {
-    const choice = await select<"file" | "paste" | "template" | "skip">(
-      io,
-      "How should this be handled?",
-      [
-        { label: "Provide a file path", value: "file" },
-        { label: "Paste the license text", value: "paste" },
-        ...(templateId
-          ? [
-              {
-                label: `Use the ${templateId} template`,
-                value: "template" as const,
-                hint: "copyright line from package author",
-              },
-            ]
-          : []),
-        { label: "Skip this package", value: "skip" },
-      ],
-      { escape: "skip" },
-    );
-    if (choice === "skip") return undefined;
-    if (choice === "template" && templateId) {
-      return { text: renderTemplate(templateId, pkg.author), generated: true };
-    }
-    if (choice === "paste") {
-      const text = (await readMultiline(io, "Paste the license text")).trim();
-      if (text) return { text, generated: false };
-      output.write(`${style.red(symbols.fail)} Nothing was entered\n`);
-      continue;
-    }
-    const path = await readLine(io, "Path to license file:");
-    try {
-      const text = (await readText(resolve(path))).trim();
-      if (text) return { text, generated: false };
-      output.write(`${style.red(symbols.fail)} That file is empty\n`);
-    } catch {
-      output.write(`${style.red(symbols.fail)} Could not read ${path}\n`);
-    }
-  }
-}
-
-function breakdown(packages: ResolvedPackage[]): Array<[string, number]> {
-  const counts = new Map<string, number>();
-  for (const pkg of packages) {
-    const key = pkg.license ?? "Unknown";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
-}
-
-async function mapPool<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await worker(items[index] as T);
-    }
+  const { document, groups } = await withStep(reporter, "Writing notices", async (step) => {
+    const appended = await Promise.all(settings.append.map((file) => readExisting(file, "Appended file")));
+    const groups = groupLicenses(licensed, settings.omitVersions);
+    const document = renderDocument({ groups, appended, lineEnding: settings.lineEnding });
+    if (settings.output === "-") stdout.write(document);
+    else await writeFileAtomic(settings.output, document);
+    step.succeed(`${groups.length} unique licenses`);
+    return { document, groups };
   });
-  await Promise.all(lanes);
-  return results;
+
+  const findings = reviewPackages(packages, settings.allow);
+  const toStdout = settings.output === "-";
+  reporter.summary({
+    packages: licensed.length,
+    uniqueLicenses: groups.length,
+    breakdown: licenseBreakdown(packages),
+    outputPath: toStdout ? undefined : settings.output,
+    outputLabel: toStdout ? "stdout" : relative(cwd, settings.output) || settings.output,
+    bytes: Buffer.byteLength(document),
+    elapsedMs: Date.now() - startedAt,
+    findings,
+  });
+
+  const failing = findings.filter((finding) => settings.blocked.has(finding.category));
+  if (failing.length > 0) throw policyError(failing);
 }

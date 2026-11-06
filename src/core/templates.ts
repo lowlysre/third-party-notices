@@ -1,4 +1,4 @@
-/** Canonical texts for a few short, very common licenses, used only when a package ships none. */
+/** Canonical texts of short, common licenses, used only for a package that ships none. */
 
 const MIT = `MIT License
 
@@ -117,19 +117,24 @@ const TEMPLATES: Readonly<Record<string, string>> = {
 
 export const SPDX_TEMPLATE_IDS = Object.keys(TEMPLATES);
 
-/** Returns the SPDX id when a license expression is exactly one bundled id. */
+/** The bundled SPDX id when `expression` is exactly one of them. */
 export function templateIdFor(expression: string | undefined): string | undefined {
-  if (!expression) {
-    return undefined;
-  }
-  const id = expression.trim().replace(/^\(|\)$/g, "");
-  return SPDX_TEMPLATE_IDS.find((known) => known.toLowerCase() === id.toLowerCase());
+  const id = expression
+    ?.trim()
+    .replace(/^\(|\)$/g, "")
+    .toLowerCase();
+  return SPDX_TEMPLATE_IDS.find((known) => known.toLowerCase() === id);
 }
 
+/** The template for `id` with the copyright holder filled in. */
 export function renderTemplate(id: string, holder: string | undefined): string {
   const template = TEMPLATES[id];
-  if (!template) {
-    throw new Error(`No bundled template for ${id}`);
-  }
+  if (!template) throw new Error(`No bundled template for ${id}`);
   return template.replace("{holder}", holder ?? "the package authors");
+}
+
+/** License text for a declared license that has a bundled template, else undefined. */
+export function generateLicense(license: string | undefined, author: string | undefined): string | undefined {
+  const id = templateIdFor(license);
+  return id && renderTemplate(id, author);
 }

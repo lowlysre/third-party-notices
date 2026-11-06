@@ -76,7 +76,7 @@ const EXCLUDED_EXTENSIONS = new Set([
   ".pdf",
 ]);
 
-export function extensionOf(name: string): string {
+function extensionOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(dot).toLowerCase() : "";
 }

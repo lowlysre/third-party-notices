@@ -10,25 +10,6 @@ const pkg = (name: string, text: string, version = "1.0.0", notices: string[] = 
   notices,
 });
 
-describe("groupLicenses", () => {
-  it("groups identical texts regardless of EOL and surrounding whitespace", () => {
-    const groups = groupLicenses([pkg("b", "MIT\r\n"), pkg("a", "\nMIT"), pkg("c", "ISC")], false);
-    assert.equal(groups.length, 2);
-    assert.deepEqual(groups[0]?.dependencies, ["c@1.0.0"]);
-    assert.deepEqual(groups[1]?.dependencies, ["a@1.0.0", "b@1.0.0"]);
-  });
-
-  it("omits versions and de-duplicates the resulting labels", () => {
-    const groups = groupLicenses([pkg("a", "MIT", "1.0.0"), pkg("a", "MIT", "2.0.0")], true);
-    assert.deepEqual(groups[0]?.dependencies, ["a"]);
-  });
-
-  it("keeps packages with different notices apart", () => {
-    const groups = groupLicenses([pkg("a", "Apache", "1.0.0", ["N1"]), pkg("b", "Apache", "1.0.0", ["N2"])], false);
-    assert.equal(groups.length, 2);
-  });
-});
-
 describe("renderDocument", () => {
   const groups = groupLicenses(
     [
@@ -38,14 +19,17 @@ describe("renderDocument", () => {
     ],
     false,
   );
+  const HEADER = [
+    "This file was generated with the third-party-notices npm package!",
+    "https://www.npmjs.com/package/third-party-notices",
+  ];
 
   it("matches the generate-license-file layout", () => {
     const text = renderDocument({ groups, appended: ["Appended\nContent"], lineEnding: "lf" });
     assert.equal(
       text,
       [
-        "This file was generated with the third-party-notices npm package!",
-        "https://www.npmjs.com/package/third-party-notices",
+        ...HEADER,
         "",
         "The following npm package may be included in this product:",
         "",
@@ -77,16 +61,15 @@ describe("renderDocument", () => {
         "",
         "-----------",
         "",
-        "This file was generated with the third-party-notices npm package!",
-        "https://www.npmjs.com/package/third-party-notices",
+        ...HEADER,
         "",
       ].join("\n"),
     );
   });
 
-  it("converts line endings", () => {
+  it("converts every line ending for crlf", () => {
     const text = renderDocument({ groups, appended: [], lineEnding: "crlf" });
-    assert.ok(text.includes("\r\n"));
     assert.ok(!/(?<!\r)\n/.test(text));
+    assert.ok(text.includes("\r\n"));
   });
 });

@@ -1,212 +1,105 @@
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
+import { compare } from "../core/compare.js";
+import { describePackage, type Manifest } from "../core/manifest.js";
+import { missingDependenciesError } from "../core/messages.js";
+import type { ResolvedPackage } from "../core/types.js";
 import { CliError } from "../errors.js";
 import { pathExists, readJson, realpathSafe } from "../fs.js";
 
-export interface ResolvedPackage {
-  name: string;
-  version: string;
-  /** Real path of the package directory. */
-  dir: string;
-  /** Declared SPDX-ish license expression, when present. */
-  license: string | undefined;
-  homepage: string | undefined;
-  /** Web URL of the source repository, when declared. */
-  repository: string | undefined;
-  author: string | undefined;
-}
-
 export interface ResolveResult {
   packages: ResolvedPackage[];
-  /** Production packages found outside node_modules (workspace/linked packages); not listed. */
+  /** Linked packages found outside `node_modules` (workspace members). Not listed, but their dependencies are. */
   firstParty: string[];
-}
-
-interface PackageJson {
-  name?: string;
-  version?: string;
-  license?: unknown;
-  licenses?: unknown;
-  homepage?: unknown;
-  repository?: unknown;
-  author?: unknown;
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-  peerDependencies?: Record<string, string>;
 }
 
 interface Edge {
   name: string;
+  /** Directory the lookup starts from. */
   from: string;
-  fromLabel: string;
+  requester: string;
   optional: boolean;
 }
 
+const names = (deps: Record<string, string> | undefined) => Object.keys(deps ?? {});
+
+function edgesOf(manifest: Manifest, from: string, requester: string, includePeers: boolean): Edge[] {
+  const edge =
+    (optional: boolean) =>
+    (name: string): Edge => ({ name, from, requester, optional });
+  return [
+    ...names(manifest.dependencies).map(edge(false)),
+    ...names(manifest.optionalDependencies).map(edge(true)),
+    ...(includePeers ? names(manifest.peerDependencies).map(edge(true)) : []),
+  ];
+}
+
+async function locatePackageJson(input: string): Promise<string> {
+  const file = input.endsWith("package.json") ? input : join(input, "package.json");
+  if (!(await pathExists(file))) {
+    throw new CliError(`Cannot find ${file}`, {
+      hint: "pass a package.json (or a directory containing one) with --input",
+    });
+  }
+  return file;
+}
+
+/** Node's lookup: `<dir>/node_modules/<name>`, then the same in each parent directory. */
+export async function resolveFrom(startDir: string, name: string): Promise<string | undefined> {
+  for (let dir = startDir; ; dir = dirname(dir)) {
+    const candidate = join(dir, "node_modules", name);
+    if (await pathExists(join(candidate, "package.json"))) return candidate;
+    if (dirname(dir) === dir) return undefined;
+  }
+}
+
 /**
- * Walks the production dependency graph of each input package.json by
- * applying Node's resolution algorithm to the installed node_modules.
+ * Walks the production dependencies of each input `package.json` through the installed
+ * `node_modules`, breadth first. Packages are keyed by real path, which collapses symlinked
+ * (pnpm) layouts and breaks cycles.
  */
-export async function resolveDependencies(inputs: string[]): Promise<ResolveResult> {
-  const seen = new Map<string, ResolvedPackage>();
-  const visitedDirs = new Set<string>();
+export async function resolveDependencies(inputs: readonly string[]): Promise<ResolveResult> {
+  const found = new Map<string, ResolvedPackage>();
+  const visited = new Set<string>();
+  const roots = new Set<string>();
   const firstParty = new Set<string>();
   const missing: string[] = [];
   let queue: Edge[] = [];
-  const roots = new Set<string>();
 
   for (const input of inputs) {
     const file = await locatePackageJson(input);
     const dir = await realpathSafe(join(file, ".."));
+    const manifest = await readJson<Manifest>(file);
     roots.add(dir);
-    visitedDirs.add(dir);
-    const json = await readJson<PackageJson>(file);
-    const label = json.name ?? input;
-    // Peers of the root are the consumer's responsibility, so they are not walked.
-    queue.push(...edgesOf(json, dir, label, false));
+    visited.add(dir);
+    // A project's own peers are its consumer's responsibility, so they aren't walked.
+    queue.push(...edgesOf(manifest, dir, manifest.name ?? input, false));
   }
 
   while (queue.length > 0) {
     const batch = queue;
     queue = [];
-    const resolved = await Promise.all(batch.map((edge) => resolveFrom(edge.from, edge.name)));
-    for (const [index, found] of resolved.entries()) {
+    const locations = await Promise.all(batch.map((edge) => resolveFrom(edge.from, edge.name)));
+    for (const [index, location] of locations.entries()) {
       const edge = batch[index] as Edge;
-      if (!found) {
-        if (!edge.optional) {
-          missing.push(`${edge.name} (required by ${edge.fromLabel})`);
-        }
+      if (!location) {
+        if (!edge.optional) missing.push(`${edge.name} (required by ${edge.requester})`);
         continue;
       }
-      const dir = await realpathSafe(found);
-      if (visitedDirs.has(dir)) {
-        continue;
-      }
-      visitedDirs.add(dir);
-      const json = await readJson<PackageJson>(join(found, "package.json"));
-      const name = json.name ?? edge.name;
-      const version = json.version ?? "0.0.0";
-      const label = `${name}@${version}`;
-      if (!dir.split(sep).includes("node_modules")) {
-        if (!roots.has(dir)) {
-          firstParty.add(label);
-        }
-      } else {
-        seen.set(dir, {
-          name,
-          version,
-          dir,
-          license: declaredLicense(json),
-          homepage: typeof json.homepage === "string" ? json.homepage : undefined,
-          repository: repositoryUrl(json.repository),
-          author: authorName(json.author),
-        });
-      }
-      queue.push(...edgesOf(json, dir, label, true));
+      const dir = await realpathSafe(location);
+      if (visited.has(dir)) continue;
+      visited.add(dir);
+
+      const manifest = await readJson<Manifest>(join(location, "package.json"));
+      const pkg = describePackage(manifest, dir, edge.name);
+      const label = `${pkg.name}@${pkg.version}`;
+      if (dir.split(sep).includes("node_modules")) found.set(dir, pkg);
+      else if (!roots.has(dir)) firstParty.add(label);
+      queue.push(...edgesOf(manifest, dir, label, true));
     }
   }
 
-  if (missing.length > 0) {
-    const shown = missing.slice(0, 8).map((m) => `  - ${m}`);
-    const more = missing.length > shown.length ? [`  …and ${missing.length - shown.length} more`] : [];
-    throw new CliError(
-      `${missing.length} dependenc${missing.length === 1 ? "y is" : "ies are"} not installed:\n${[...shown, ...more].join("\n")}`,
-      {
-        hint: "run your package manager's install command first (npm install, pnpm install, yarn)",
-      },
-    );
-  }
+  if (missing.length > 0) throw missingDependenciesError(missing);
 
-  const packages = [...seen.values()].sort((a, b) => compare(a.name, b.name) || compare(a.version, b.version));
+  const packages = [...found.values()].sort((a, b) => compare(a.name, b.name) || compare(a.version, b.version));
   return { packages, firstParty: [...firstParty].sort(compare) };
-}
-
-function edgesOf(json: PackageJson, dir: string, label: string, includePeers: boolean): Edge[] {
-  const edges: Edge[] = [];
-  for (const name of Object.keys(json.dependencies ?? {})) {
-    edges.push({ name, from: dir, fromLabel: label, optional: false });
-  }
-  for (const name of Object.keys(json.optionalDependencies ?? {})) {
-    edges.push({ name, from: dir, fromLabel: label, optional: true });
-  }
-  if (includePeers) {
-    for (const name of Object.keys(json.peerDependencies ?? {})) {
-      edges.push({ name, from: dir, fromLabel: label, optional: true });
-    }
-  }
-  return edges;
-}
-
-async function locatePackageJson(input: string): Promise<string> {
-  const direct = input.endsWith("package.json") ? input : join(input, "package.json");
-  if (!(await pathExists(direct))) {
-    throw new CliError(`Cannot find ${direct}`, {
-      hint: "pass a package.json (or a directory containing one) with --input",
-    });
-  }
-  return direct;
-}
-
-/** Node's lookup: check <dir>/node_modules/<name>, then each parent directory. */
-export async function resolveFrom(startDir: string, name: string): Promise<string | undefined> {
-  let current = startDir;
-  for (;;) {
-    const candidate = join(current, "node_modules", name);
-    if (await pathExists(join(candidate, "package.json"))) {
-      return candidate;
-    }
-    const parent = join(current, "..");
-    if (parent === current) {
-      return undefined;
-    }
-    current = parent;
-  }
-}
-
-export function declaredLicense(json: PackageJson): string | undefined {
-  const pick = (value: unknown): string | undefined => {
-    if (typeof value === "string") return value;
-    if (value && typeof value === "object" && typeof (value as { type?: unknown }).type === "string") {
-      return (value as { type: string }).type;
-    }
-    return undefined;
-  };
-  if (Array.isArray(json.licenses)) {
-    const all = json.licenses.map(pick).filter((v): v is string => v !== undefined);
-    return all.length > 0 ? all.join(" OR ") : undefined;
-  }
-  return pick(json.license) ?? pick(json.licenses);
-}
-
-/** Turns npm's repository forms (git+https, git://, github:user/repo, user/repo) into a web URL. */
-export function repositoryUrl(value: unknown): string | undefined {
-  const raw = typeof value === "string" ? value : (value as { url?: unknown } | null)?.url;
-  if (typeof raw !== "string" || raw.trim() === "") {
-    return undefined;
-  }
-  const text = raw.trim();
-  const shorthand = /^(?:(github|gitlab|bitbucket):)?([\w.-]+\/[\w.-]+)$/.exec(text);
-  if (shorthand) {
-    const host = { github: "github.com", gitlab: "gitlab.com", bitbucket: "bitbucket.org" }[shorthand[1] ?? "github"];
-    return `https://${host}/${shorthand[2]}`;
-  }
-  const cleaned = text
-    .replace(/^git\+/, "")
-    .replace(/^git:\/\//, "https://")
-    .replace(/^ssh:\/\/git@/, "https://")
-    .replace(/^git@([^:]+):/, "https://$1/")
-    .replace(/\.git(?:#.*)?$/, "");
-  return /^https?:\/\//.test(cleaned) ? cleaned : undefined;
-}
-
-function authorName(author: unknown): string | undefined {
-  if (typeof author === "string") {
-    return author.replace(/\s*[<(].*$/, "").trim() || undefined;
-  }
-  if (author && typeof author === "object" && typeof (author as { name?: unknown }).name === "string") {
-    return (author as { name: string }).name;
-  }
-  return undefined;
-}
-
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }

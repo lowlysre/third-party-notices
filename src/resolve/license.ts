@@ -1,71 +1,48 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { readText } from "../fs.js";
-import { isLicenseFileName, isLicensesDirFile, isNoticeFileName, licenseRank } from "./names.js";
-import type { ResolvedPackage } from "./tree.js";
-
-export { isLicenseFileName, isNoticeFileName };
+import { compare } from "../core/compare.js";
+import { packageLabel } from "../core/messages.js";
+import { isLicenseFileName, isLicensesDirFile, isNoticeFileName, licenseRank } from "../core/names.js";
+import type { ResolvedPackage } from "../core/types.js";
+import { readExisting, readText } from "../fs.js";
 
 export interface LicenseInfo {
   text: string | undefined;
+  /** Contents of NOTICE files, which Apache-style licenses require to be carried along. */
   notices: string[];
 }
 
-function byRank(a: string, b: string): number {
-  return (licenseRank(a) ?? 0) - (licenseRank(b) ?? 0) || (a < b ? -1 : a > b ? 1 : 0);
-}
+const distinct = (texts: readonly string[]): string[] => [...new Set(texts.map((text) => text.trim()).filter(Boolean))];
+const byRank = (a: string, b: string): number => (licenseRank(a) ?? 0) - (licenseRank(b) ?? 0) || compare(a, b);
 
-/** Finds license text and NOTICE files in a package directory. */
-export async function readLicense(pkg: Pick<ResolvedPackage, "dir">): Promise<LicenseInfo> {
-  const entries = await readdir(pkg.dir, { withFileTypes: true });
-  const licenseFiles: string[] = [];
-  const noticeFiles: string[] = [];
-  const licenseDirs: string[] = [];
+/** License text from the package's license files (best match first, duplicates merged) and NOTICE files. */
+export async function readLicense(dir: string): Promise<LicenseInfo> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const named = (keep: (name: string) => boolean) =>
+    entries.filter((entry) => !entry.isDirectory() && keep(entry.name)).map((entry) => entry.name);
 
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      if (/^licen[sc]es$/i.test(entry.name)) licenseDirs.push(entry.name);
-    } else if (isLicenseFileName(entry.name)) {
-      licenseFiles.push(entry.name);
-    } else if (isNoticeFileName(entry.name)) {
-      noticeFiles.push(entry.name);
-    }
+  const rootFiles = named(isLicenseFileName).sort(byRank);
+  const noticeFiles = named(isNoticeFileName).sort(compare);
+  const nestedFiles: string[] = [];
+  for (const folder of entries.filter((entry) => entry.isDirectory() && /^licen[sc]es$/i.test(entry.name))) {
+    const inner = await readdir(join(dir, folder.name), { withFileTypes: true });
+    const names = inner
+      .filter((entry) => !entry.isDirectory() && isLicensesDirFile(entry.name))
+      .map((entry) => entry.name);
+    nestedFiles.push(...names.sort(compare).map((name) => join(folder.name, name)));
   }
 
-  licenseFiles.sort(byRank);
-  const paths = licenseFiles.map((name) => join(pkg.dir, name));
-  for (const dirName of licenseDirs.sort()) {
-    const inner = await readdir(join(pkg.dir, dirName), { withFileTypes: true });
-    for (const entry of inner.sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      if (entry.isFile() && isLicensesDirFile(entry.name)) {
-        paths.push(join(pkg.dir, dirName, entry.name));
-      }
-    }
-  }
-
-  return {
-    text: joinDistinct(await Promise.all(paths.map(readText))),
-    notices:
-      noticeFiles.length > 0
-        ? distinct(await Promise.all(noticeFiles.sort().map((n) => readText(join(pkg.dir, n)))))
-        : [],
-  };
+  const read = (files: readonly string[]) => Promise.all(files.map((file) => readText(join(dir, file))));
+  const text = distinct(await read([...rootFiles, ...nestedFiles])).join("\n\n");
+  return { text: text || undefined, notices: distinct(await read(noticeFiles)) };
 }
 
-function distinct(texts: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of texts) {
-    const text = raw.trim();
-    if (text && !seen.has(text)) {
-      seen.add(text);
-      out.push(text);
-    }
-  }
-  return out;
-}
-
-function joinDistinct(texts: string[]): string | undefined {
-  const parts = distinct(texts);
-  return parts.length > 0 ? parts.join("\n\n") : undefined;
+/** The `replace` file from the config when there is one, else the package's own license files. */
+export async function licenseFor(
+  pkg: ResolvedPackage,
+  replace: Readonly<Record<string, string>>,
+): Promise<LicenseInfo> {
+  const replacement = replace[packageLabel(pkg)] ?? replace[pkg.name];
+  if (replacement === undefined) return readLicense(pkg.dir);
+  return { text: await readExisting(replacement, `Replacement license for ${pkg.name}`), notices: [] };
 }
