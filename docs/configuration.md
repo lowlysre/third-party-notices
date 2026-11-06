@@ -14,28 +14,33 @@ The config is read from the first of these that exists in the working directory:
   "lineEnding": "lf",
   "omitVersions": false,
   "overwrite": false,
+  "allowMissing": false,
   "append": ["./additional-content.txt"],
   "replace": {
     "some-package@4.33.1": "./bespoke-license.txt",
     "another-package": "./bespoke-license-2.txt"
   },
-  "exclude": ["your-package", "my-package@1.2.0", "/^@types\\//"]
+  "exclude": ["your-package", "my-package@1.2.0", "/^@types\\//"],
+  "failOn": ["strong-copyleft", "restricted"],
+  "allow": ["reviewed-package@2.0.0"]
 }
 ```
 
 ## Keys
 
-- `inputs`: `package.json` files (or directories containing one) to scan.
-- `output`: output file, or `-` for stdout.
-- `lineEnding`: `lf` or `crlf`.
-- `omitVersions`: list `name` instead of `name@version`.
-- `overwrite`: replace an existing output file without asking.
-- `allowMissing`: same as `--allow-missing`, see [License text](how-it-works.md#license-text).
-- `append`: file contents added after the last license group.
-- `replace`: use the given file instead of the package's license. Keys are `name` or `name@version`.
-- `exclude`: omit packages. Entries are `name`, `name@version`, or a `/regex/flags` matched against the name.
-- `failOn`: license review categories that make the run exit 1, for example `["copyleft"]`. See [License review](how-it-works.md#license-review).
-- `allow`: packages to leave out of the license review. Entries use the same forms as `exclude`.
+| Key | Type | Description | Command line |
+| --- | --- | --- | --- |
+| `inputs` | string[] | `package.json` files (or directories containing one) to scan. Default: `./package.json` | `--input` |
+| `output` | string | Output file, or `-` for stdout. Default: `./third-party-licenses.txt` | `--output` |
+| `lineEnding` | `"lf"` or `"crlf"` | Line endings of the output. Default: the OS default | `--eol` |
+| `omitVersions` | boolean | List `name` instead of `name@version` | `--omit-versions` |
+| `overwrite` | boolean | Replace an existing output file without asking | `--overwrite` |
+| `allowMissing` | boolean | Use a template or skip packages with no license text instead of prompting or failing. See [License text](how-it-works.md#license-text) | `--allow-missing` |
+| `append` | string[] | Files whose contents are added after the last license group | |
+| `replace` | object | Use the given file instead of a package's license. Keys are `name` or `name@version` | |
+| `exclude` | string[] | Packages to omit: `name`, `name@version`, or a `/regex/flags` matched against the name | |
+| `failOn` | string[] | License review categories that make the run exit 1, such as `["copyleft"]`. See [License review](how-it-works.md#license-review) | `--fail-on` |
+| `allow` | string[] | Packages to leave out of the license review. Same forms as `exclude` | |
 
 ## Rules
 
