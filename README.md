@@ -28,10 +28,10 @@ Example run on a terminal:
   Apache-2.0  ███ 16
 ```
 
-It reads the installed `node_modules`, collects each package's license text, groups packages that share identical text, and writes one file. The feature set follows [generate-license-file](https://github.com/TobyAndToby/generate-license-file), as a CLI only, and license files are found with the same file name rules GitHub uses (see [Acknowledgments](#acknowledgments)).
+It reads the installed `node_modules`, collects each package's license text, groups packages that share identical text, and writes one file.
 
 > [!NOTE]
-> The package isn't published to npm yet. Until it is, build from source (see Development).
+> The package isn't published to npm yet. Until it is, build from source (see [Development](docs/development.md)).
 
 ## Usage
 
@@ -59,116 +59,15 @@ The short alias `tpn` is installed alongside `third-party-notices`.
 | `-v, --version` | Print the version |
 | `-h, --help` | Show help |
 
-Precedence is command line, then config file, then defaults.
+Precedence is command line, then config file, then defaults. Exit codes: `0` success, `1` runtime failure or `--ci` found a package without license text, `2` usage error, `130` cancelled with Ctrl-C.
 
-### Exit codes
+## Docs
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Success |
-| `1` | Runtime failure, or `--ci` found a package without license text |
-| `2` | Usage error (unknown option, bad value) |
-| `130` | Cancelled with Ctrl-C |
-
-## Output
-
-The document lists each group of packages followed by their shared license text, with `NOTICE` files appended under "With the following notices:". Groups and packages are sorted, so the same input produces the same bytes on every OS for a given `--eol`.
-
-```text
-The following npm packages may be included in this product:
-
- - a@1.0.0
- - b@1.0.0
-
-These packages each contain the following license:
-
-MIT License ...
-
------------
-```
-
-## Configuration
-
-The config is read from the first of these that exists in the working directory:
-
-1. `--config <path>`
-2. `third-party-notices.config.json`
-3. `third-party-notices.config.mjs` (default export: an object, or a function returning one)
-4. A `thirdPartyNotices` key in `package.json`
-
-```json
-{
-  "inputs": ["./package.json"],
-  "output": "./third-party-licenses.txt",
-  "lineEnding": "lf",
-  "omitVersions": false,
-  "overwrite": false,
-  "append": ["./additional-content.txt"],
-  "replace": {
-    "some-package@4.33.1": "./bespoke-license.txt",
-    "another-package": "./bespoke-license-2.txt"
-  },
-  "exclude": ["your-package", "my-package@1.2.0", "/^@types\\//"]
-}
-```
-
-- `append`: file contents added after the last license group.
-- `replace`: use the given file instead of the package's license. Keys are `name` or `name@version`.
-- `exclude`: omit packages. Entries are `name`, `name@version`, or a `/regex/flags` matched against the name.
-- Relative paths resolve against the directory of the config file.
-- Unknown keys and wrong types are errors, listed together with their key path.
-
-## How dependencies are resolved
-
-For each input `package.json`, the tool walks `dependencies` and `optionalDependencies` using Node's resolution algorithm against the installed `node_modules`, so hoisted, nested, scoped, and pnpm layouts resolve the same way Node would.
-
-- `devDependencies` are never walked.
-- Peer dependencies of a dependency are included when installed. Peer dependencies of the input itself are not walked.
-- Packages are deduplicated by real path, which handles symlinks and cycles. The same package at two versions appears twice.
-- Packages found outside `node_modules` (workspace members and `link:` or `file:` dependencies) are treated as first-party code: they aren't listed, but their own dependencies are.
-- A missing required dependency fails the run and lists every missing package. A missing optional dependency is skipped.
-
-## License text
-
-For each package, the first match wins:
-
-1. A `replace` entry from the config.
-2. License files in the package root, using the file name rules GitHub applies through [Licensee](https://github.com/licensee/licensee): `LICENSE`, `LICENCE`, `UNLICENSE`, `COPYING`, `COPYRIGHT`, `OFL`, and `PATENTS`, with extensions and decorations such as `LICENSE-MIT`, `MIT-LICENSE`, or `COPYING.LESSER`. Files in a `LICENSES/` directory are included too, using the [REUSE](https://reuse.software) convention of an SPDX id plus a text extension. Code, data, and image files with those names (`license.js`, `LICENSE.spdx`) are skipped. Distinct texts are joined, best match first.
-3. Nothing found: the package needs attention.
-
-With `--ci`, or when there's no terminal, the run fails after listing every package without text. On a terminal, you're prompted per package to provide a file path, paste the text (end with a line containing only `.`), use a bundled SPDX template (`MIT`, `ISC`, `BSD-2-Clause`, `BSD-3-Clause`, `0BSD`, with the copyright line taken from the package author), or skip it. Template-generated text is flagged for review in the summary.
-
-## Terminal behavior
-
-- Progress, warnings, and errors go to stderr. Only `-o -` writes to stdout, so pipes stay clean.
-- Colors turn on for a TTY. `NO_COLOR`, `--no-color`, `TERM=dumb` turn them off, and `FORCE_COLOR` forces them on.
-- The ASCII hero, spinner, and prompts appear only on an interactive terminal outside CI. Otherwise output is plain, line-based text.
-- Unicode glyphs fall back to ASCII when the terminal is unlikely to render them. `TPN_ASCII=1` forces the fallback.
-- `DEBUG=third-party-notices` prints stack traces for unexpected errors.
-
-## Migrating from generate-license-file
-
-- The flags match, so most invocations only change the command name.
-- Config file names and discovery differ: use `third-party-notices.config.json`, `.mjs`, or the `package.json` key. YAML, JSON5, and `.glf` file names aren't read.
-- The config keys `inputs`, `output`, `lineEnding`, `append`, `replace`, `exclude`, and `omitVersions` carry over.
-- Missing `--input` or `--output` use defaults instead of prompting.
-- The output header names this package instead of generate-license-file.
-- There's no library API.
-
-## Development
-
-Requires Node 22 or newer.
-
-```bash
-npm ci
-npm run build
-npm test
-npm run lint
-```
-
-`npm run test:coverage` prints coverage, and `npm run pack:check` verifies the tarball contents and that no runtime dependencies are declared.
-
-CI runs the tests on Linux, Windows, and macOS with Node 22 and 24, plus [zizmor](https://github.com/zizmorcore/zizmor) (pedantic persona), [MegaLinter](https://github.com/oxsecurity/megalinter), and a single [are-we-good](https://github.com/lowlydba/are-we-good) roll-up check. Linux jobs run under step-security harden-runner in block mode. Releases publish from a `v*.*.*` tag with npm trusted publishing, so no npm token is stored.
+- [Configuration](docs/configuration.md): config files, keys, `append`, `replace`, and `exclude`.
+- [How it works](docs/how-it-works.md): dependency resolution, license file detection, and the output format.
+- [Terminal behavior](docs/terminal.md): streams, colors, the hero banner, prompts, and environment variables.
+- [Migrating from generate-license-file](docs/migrating.md)
+- [Development](docs/development.md): building, testing, CI, and releases.
 
 ## License
 

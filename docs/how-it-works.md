@@ -1,0 +1,42 @@
+# How it works
+
+## Dependency resolution
+
+For each input `package.json`, the tool walks `dependencies` and `optionalDependencies` using Node's resolution algorithm against the installed `node_modules`, so hoisted, nested, scoped, and pnpm layouts resolve the same way Node would.
+
+- `devDependencies` are never walked.
+- Peer dependencies of a dependency are included when installed. Peer dependencies of the input itself are not walked.
+- Packages are deduplicated by real path, which handles symlinks and cycles. The same package at two versions appears twice.
+- Packages found outside `node_modules` (workspace members and `link:` or `file:` dependencies) are treated as first-party code: they aren't listed, but their own dependencies are.
+- A missing required dependency fails the run and lists every missing package. A missing optional dependency is skipped.
+
+## License text
+
+For each package, the first match wins:
+
+1. A `replace` entry from the config.
+2. License files in the package root, using the file name rules GitHub applies through [Licensee](https://github.com/licensee/licensee): `LICENSE`, `LICENCE`, `UNLICENSE`, `COPYING`, `COPYRIGHT`, `OFL`, and `PATENTS`, with extensions and decorations such as `LICENSE-MIT`, `MIT-LICENSE`, or `COPYING.LESSER`. Files in a `LICENSES/` directory are included too, using the [REUSE](https://reuse.software) convention of an SPDX id plus a text extension. Code, data, and image files with those names (`license.js`, `LICENSE.spdx`) are skipped. Distinct texts are joined, best match first.
+3. Nothing found: the package needs attention.
+
+With `--ci`, or when there's no terminal, the run fails after listing every package without text. On a terminal, you're prompted per package to provide a file path, paste the text (end with a line containing only `.`), use a bundled SPDX template (`MIT`, `ISC`, `BSD-2-Clause`, `BSD-3-Clause`, `0BSD`, with the copyright line taken from the package author), or skip it. Template-generated text is flagged for review in the summary.
+
+The declared license type never changes what's copied. It only feeds the summary chart, the "declares X" hint in prompts, and the template offer.
+
+## Output format
+
+The document lists each group of packages followed by their shared license text, with `NOTICE` files appended under "With the following notices:". Groups and packages are sorted, so the same input produces the same bytes on every OS for a given `--eol`.
+
+```text
+The following npm packages may be included in this product:
+
+ - a@1.0.0
+ - b@1.0.0
+
+These packages each contain the following license:
+
+MIT License ...
+
+-----------
+```
+
+Packages whose license text and notices are identical share one entry. Files named with `append` in the config follow the last group.
