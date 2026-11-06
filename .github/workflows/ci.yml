@@ -14,6 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read # read the title
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+
+      # The squashed PR title becomes the commit message that semantic-release reads.
+      - name: Check Conventional Commits title
+        uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -190,7 +212,7 @@ jobs:
   are-we-good:
     name: Are we good?
     runs-on: ubuntu-latest
-    needs: [test, quality, zizmor, megalinter]
+    needs: [pr-title, test, quality, zizmor, megalinter]
     if: ${{ always() }}
     timeout-minutes: 5
     permissions: {}
