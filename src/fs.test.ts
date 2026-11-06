@@ -48,6 +48,18 @@ describe("writeFileAtomic", () => {
     await assert.rejects(readFile(`${target}.${process.pid}.tmp`), { code: "ENOENT" });
   });
 
+  it("refuses to replace an existing file unless told to", async (t) => {
+    const dir = await tempDir(t);
+    await writeFiles(dir, { "out.txt": "first" });
+    await assert.rejects(
+      writeFileAtomic(join(dir, "out.txt"), "second", false),
+      (error: unknown) => error instanceof CliError && /already exists/.test(error.message),
+    );
+    assert.equal(await readFile(join(dir, "out.txt"), "utf8"), "first");
+    await writeFileAtomic(join(dir, "new.txt"), "fresh", false);
+    assert.equal(await readFile(join(dir, "new.txt"), "utf8"), "fresh");
+  });
+
   it("cleans up and rethrows when the target cannot be replaced", async (t) => {
     const dir = await tempDir(t);
     await writeFiles(dir, { "taken/file.txt": "x" });

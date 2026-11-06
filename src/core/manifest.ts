@@ -20,14 +20,19 @@ const licenseName = (value: unknown): string | undefined => {
   return typeof type === "string" ? type : undefined;
 };
 
-/** The declared license as one expression; the legacy `licenses` array becomes an OR. */
+/** The declared license as one expression. The deprecated `licenses` array is a fallback, joined with OR. */
 export function declaredLicense({ license, licenses }: Manifest): string | undefined {
+  const current = licenseName(license);
+  if (current !== undefined) return current;
   if (Array.isArray(licenses)) {
     const names = licenses.map(licenseName).filter((name) => name !== undefined);
     if (names.length > 0) return names.join(" OR ");
   }
-  return licenseName(license) ?? licenseName(licenses);
+  return licenseName(licenses);
 }
+
+/** Drops control characters, so package metadata can't inject terminal escape sequences. */
+export const printable = (text: string): string => text.replace(/\p{Cc}/gu, "");
 
 /** Web URL for npm's repository forms: `git+https://…`, `git://…`, `github:user/repo`, `user/repo`. */
 export function repositoryUrl(value: unknown): string | undefined {
@@ -55,13 +60,14 @@ export function authorName(author: unknown): string | undefined {
 }
 
 export function describePackage(manifest: Manifest, dir: string, fallbackName: string): ResolvedPackage {
+  const clean = (text: string | undefined) => text && printable(text);
   return {
-    name: manifest.name ?? fallbackName,
-    version: manifest.version ?? "0.0.0",
+    name: printable(manifest.name ?? fallbackName),
+    version: printable(manifest.version ?? "0.0.0"),
     dir,
-    license: declaredLicense(manifest),
-    homepage: typeof manifest.homepage === "string" ? manifest.homepage : undefined,
-    repository: repositoryUrl(manifest.repository),
-    author: authorName(manifest.author),
+    license: clean(declaredLicense(manifest)),
+    homepage: clean(typeof manifest.homepage === "string" ? manifest.homepage : undefined),
+    repository: clean(repositoryUrl(manifest.repository)),
+    author: clean(authorName(manifest.author)),
   };
 }

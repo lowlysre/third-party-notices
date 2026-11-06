@@ -41,14 +41,20 @@ async function withStep<T>(reporter: Reporter, label: string, work: (step: Step)
   }
 }
 
-/** Refuses to replace an existing output unless allowed, asking first when a terminal is available. */
-async function guardOverwrite(settings: Settings, prompt: PromptIO | undefined, cwd: string): Promise<void> {
-  if (settings.output === "-" || settings.overwrite || !(await pathExists(settings.output))) return;
+/**
+ * Refuses to replace an existing output unless allowed, asking first when a terminal is available.
+ * Returns whether replacing is authorized, so the writer can refuse a file that shows up later.
+ */
+async function guardOverwrite(settings: Settings, prompt: PromptIO | undefined, cwd: string): Promise<boolean> {
+  if (settings.output === "-") return false;
+  if (settings.overwrite) return true;
+  if (!(await pathExists(settings.output))) return false;
   const shown = relative(cwd, settings.output) || settings.output;
   if (!prompt) throw new CliError(`${shown} already exists`, { hint: "pass --overwrite to replace it" });
   if (!(await confirm(prompt, `${shown} already exists. Overwrite?`))) {
     throw new CliError("Aborted: output file left untouched");
   }
+  return true;
 }
 
 async function findPackages(settings: Settings, step: Step): Promise<ResolvedPackage[]> {
@@ -126,7 +132,7 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
 
   const settings = resolveSettings(args, await loadConfig(cwd, args.config), cwd, systemLineEnding());
   const prompt = args.ci ? undefined : deps.prompt;
-  await guardOverwrite(settings, prompt, cwd);
+  const replace = await guardOverwrite(settings, prompt, cwd);
 
   const packages = await withStep(reporter, "Resolving dependencies", (step) => findPackages(settings, step));
   const { licensed, unresolved } = await withStep(reporter, "Reading licenses", (step) =>
@@ -139,7 +145,7 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
     const groups = groupLicenses(licensed, settings.omitVersions);
     const document = renderDocument({ groups, appended, lineEnding: settings.lineEnding });
     if (settings.output === "-") stdout.write(document);
-    else await writeFileAtomic(settings.output, document);
+    else await writeFileAtomic(settings.output, document, replace);
     step.succeed(`${groups.length} unique licenses`);
     return { document, groups };
   });

@@ -58,6 +58,21 @@ describe("select", () => {
     assert.ok(output().endsWith("\u001b[?25h"));
   });
 
+  it("restores the terminal and exits when a termination signal arrives", async (t) => {
+    const exit = t.mock.method(process, "exit", () => undefined as never);
+    const { io, output, rawModes } = fakeIo();
+    select(io, "Pick", choices).catch(() => {});
+    await tick();
+    process.emit("SIGTERM", "SIGTERM");
+    assert.deepEqual(
+      exit.mock.calls.map((call) => call.arguments[0]),
+      [143],
+    );
+    assert.deepEqual(rawModes, [true, false]);
+    assert.ok(output().endsWith("\u001b[?25h"));
+    assert.equal(process.listenerCount("SIGTERM"), 0);
+  });
+
   it("moves up over every physical row when lines wrap", async () => {
     const { io, input, output } = fakeIo();
     const result = select({ ...io, columns: 10 }, "A long question", choices);

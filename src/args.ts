@@ -132,11 +132,20 @@ export function parseCliArgs(argv: readonly string[]): Args {
     if (token.kind === "positional") {
       throw new UsageError(`Unexpected argument "${token.value}"`, "pass input files with --input <paths...>");
     }
-    if (token.kind === "option" && !known.includes(token.name)) {
+    if (token.kind !== "option") continue;
+    if (!known.includes(token.name)) {
       const suggestion = didYouMean(token.name, known);
       throw new UsageError(
         `Unknown option "${token.rawName}"`,
         suggestion ? `did you mean --${suggestion}?` : "run with --help to see all options",
+      );
+    }
+    // A separate value that looks like an option means the real value is missing: `-o --ci`.
+    const wantsValue = OPTIONS.some((option) => option.name === token.name && option.type === "string");
+    if (wantsValue && token.inlineValue === false && token.value?.startsWith("-") && token.value !== "-") {
+      throw new UsageError(
+        `--${token.name} requires a value`,
+        `use --${token.name}=${token.value} to pass it literally`,
       );
     }
   }

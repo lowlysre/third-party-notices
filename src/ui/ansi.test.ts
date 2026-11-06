@@ -27,6 +27,13 @@ describe("ansi helpers", () => {
     assert.equal(truncate("abc", 6), "abc");
     assert.equal(truncate("abcdef", 1), "a");
   });
+
+  it("counts wide characters as two columns and combining marks as none", () => {
+    assert.equal(visibleLength("日本語"), 6);
+    assert.equal(visibleLength("e\u0301"), 1);
+    assert.equal(truncate("日本語日本語", 7), "日本語…");
+    assert.equal(padEnd("日本", 6), "日本  ");
+  });
 });
 
 describe("renderBanner", () => {

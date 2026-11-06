@@ -66,6 +66,10 @@ describe("parseCliArgs", () => {
   it("rejects bad values and stray arguments", () => {
     assert.throws(() => parseCliArgs(["--eol", "cr"]), /Invalid --eol/);
     assert.throws(() => parseCliArgs(["-o"]), /requires a value/);
+    assert.throws(() => parseCliArgs(["-o", "--ci"]), /--output requires a value/);
+    assert.throws(() => parseCliArgs(["--input", "--ci"]), /--input requires a value/);
+    assert.equal(parseCliArgs(["-o", "-"]).output, "-");
+    assert.equal(parseCliArgs(["--output=--ci"]).output, "--ci");
     assert.throws(() => parseCliArgs(["--ci=yes"]), /does not take a value/);
     assert.throws(() => parseCliArgs(["--fail-on", "copyleft", "--fail-on"]), UsageError);
     assert.throws(() => parseCliArgs(["--input", "a", "--input"]), UsageError);

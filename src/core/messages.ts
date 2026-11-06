@@ -1,4 +1,5 @@
 import { CliError } from "../errors.js";
+import { printable } from "./manifest.js";
 import { CATEGORY_LABELS, type Finding } from "./policy.js";
 import type { ResolvedPackage } from "./types.js";
 
@@ -8,9 +9,9 @@ export const packageLabel = ({ name, version }: Named): string => `${name}@${ver
 
 const plural = (count: number, one: string, many: string): string => (count === 1 ? one : many);
 
-/** `  - a`, one per line, capped with `…and N more`. */
+/** `  - a`, one per line, capped with `…and N more`. Items can hold package metadata, so control characters are dropped. */
 function bullets(items: readonly string[], limit: number): string {
-  const lines = items.slice(0, limit).map((item) => `  - ${item}`);
+  const lines = items.slice(0, limit).map((item) => `  - ${printable(item)}`);
   if (items.length > limit) lines.push(`  …and ${items.length - limit} more`);
   return lines.join("\n");
 }

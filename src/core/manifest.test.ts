@@ -9,6 +9,11 @@ describe("declaredLicense", () => {
     assert.equal(declaredLicense({ licenses: [{ type: "MIT" }, { type: "ISC" }, "BSD"] }), "MIT OR ISC OR BSD");
   });
 
+  it("prefers license over the deprecated licenses array, which is a fallback", () => {
+    assert.equal(declaredLicense({ license: "GPL-3.0-only", licenses: [{ type: "MIT" }] }), "GPL-3.0-only");
+    assert.equal(declaredLicense({ licenses: [{ type: "MIT" }, { type: "ISC" }, "BSD"] }), "MIT OR ISC OR BSD");
+  });
+
   it("falls back to license when the licenses array is empty, and to undefined when nothing is declared", () => {
     assert.equal(declaredLicense({ licenses: [], license: "MIT" }), "MIT");
     assert.equal(declaredLicense({ licenses: [] }), undefined);
@@ -62,5 +67,14 @@ describe("describePackage", () => {
       [pkg.name, pkg.version, pkg.dir, pkg.homepage],
       ["fallback", "0.0.0", "/dir", "https://x.example"],
     );
+  });
+
+  it("drops control characters from metadata so it can't inject terminal sequences", () => {
+    const pkg = describePackage(
+      { name: "evil\u001b]52;c;eA==\u0007pkg", license: "MIT\u001b[2J", author: "Ada\u0000" },
+      "/dir",
+      "x",
+    );
+    assert.deepEqual([pkg.name, pkg.license, pkg.author], ["evil]52;c;eA==pkg", "MIT[2J", "Ada"]);
   });
 });

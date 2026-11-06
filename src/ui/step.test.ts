@@ -77,6 +77,20 @@ describe("AnimatedStep with animation", () => {
     assert.ok(frames.some((frame) => frame.includes("...")));
   });
 
+  it("restores the cursor and exits with the signal's status on SIGINT and SIGTERM", async (t) => {
+    const exit = t.mock.method(process, "exit", () => undefined as never);
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      const { step } = start(animated);
+      process.emit(signal, signal);
+      step.stop();
+    }
+    assert.deepEqual(
+      exit.mock.calls.map((call) => call.arguments[0]),
+      [130, 143],
+    );
+    assert.equal(process.listenerCount("SIGINT"), 0);
+  });
+
   it("stop clears the line without printing a result", async () => {
     const { step, text, ended } = start(animated);
     await sleep(100);

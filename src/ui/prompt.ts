@@ -65,6 +65,8 @@ export function select<T>(
       input.removeListener("keypress", onKey);
       input.removeListener("end", onEnd);
       input.removeListener("close", onEnd);
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
       input.setRawMode?.(false);
       input.pause();
       output.write(cursor.up(rendered) + cursor.clearDown + cursor.show);
@@ -75,6 +77,11 @@ export function select<T>(
     };
 
     const onEnd = (): void => finish(() => reject(new CancelledError()));
+    // Raw mode turns Ctrl-C into a keypress, but a signal sent from outside still needs the terminal restored.
+    const onSignal = (signal: NodeJS.Signals): void => {
+      finish(() => {});
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    };
 
     const onKey = (text: string | undefined, key: Key | undefined): void => {
       const name = key?.name;
@@ -104,6 +111,8 @@ export function select<T>(
     input.on("keypress", onKey);
     input.on("end", onEnd);
     input.on("close", onEnd);
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
     draw();
   });
 }

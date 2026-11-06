@@ -51,19 +51,32 @@ export function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
 }
 
+/** Columns a character occupies: 0 for combining marks, 2 for East Asian wide and fullwidth forms and emoji, else 1. */
+const WIDE =
+  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua000-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1f64f}\u{1f900}-\u{1f9ff}\u{20000}-\u{3fffd}]/u;
+const charWidth = (char: string): number => (/\p{M}/u.test(char) ? 0 : WIDE.test(char) ? 2 : 1);
+
+/** Terminal columns taken by plain text. */
+export const textWidth = (text: string): number => [...text].reduce((sum, char) => sum + charWidth(char), 0);
+
 export function visibleLength(text: string): number {
-  return [...stripAnsi(text)].length;
+  return textWidth(stripAnsi(text));
 }
 
-/** Truncates plain text to a maximum number of columns, adding an ellipsis. */
+/** Truncates plain text to a maximum number of terminal columns, adding an ellipsis. */
 export function truncate(text: string, max: number, ellipsis = "…"): string {
-  const chars = [...text];
-  if (chars.length <= max) {
+  if (textWidth(text) <= max) {
     return text;
   }
-  return max <= ellipsis.length
-    ? chars.slice(0, Math.max(0, max)).join("")
-    : chars.slice(0, max - ellipsis.length).join("") + ellipsis;
+  const room = max <= textWidth(ellipsis) ? Math.max(0, max) : max - textWidth(ellipsis);
+  let kept = "";
+  let used = 0;
+  for (const char of text) {
+    used += charWidth(char);
+    if (used > room) break;
+    kept += char;
+  }
+  return max <= textWidth(ellipsis) ? kept : kept + ellipsis;
 }
 
 export function padEnd(text: string, width: number): string {
