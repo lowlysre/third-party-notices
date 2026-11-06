@@ -127,6 +127,21 @@ describe("cli", () => {
     assert.ok(!text.includes("skipme"));
   });
 
+  it("uses --allow-missing so --ci does not fail for packages without license text", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { bare: "1" } } });
+    await installPackage(root, "bare", { license: "MIT", author: "Ada", files: {} });
+
+    const failed = await cli(root, ["--ci", "-o", "-"]);
+    assert.equal(failed.code, 1);
+    assert.match(failed.stderr, /--allow-missing/);
+
+    const allowed = await cli(root, ["--ci", "--allow-missing", "-o", "-", "--eol", "lf"]);
+    assert.equal(allowed.code, 0, allowed.stderr);
+    assert.match(allowed.stdout, /Copyright \(c\) Ada/);
+    assert.match(allowed.stderr, /generated from an SPDX template/);
+  });
+
   it("flags licenses for review and exits 1 for --fail-on categories", async (t) => {
     const root = await tempDir(t);
     await writeFiles(root, { "package.json": { name: "app", dependencies: { copyleft: "1" } } });

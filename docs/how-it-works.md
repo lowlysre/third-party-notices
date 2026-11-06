@@ -18,7 +18,11 @@ For each package, the first match wins:
 2. License files in the package root, using the file name rules GitHub applies through [Licensee](https://github.com/licensee/licensee): `LICENSE`, `LICENCE`, `UNLICENSE`, `COPYING`, `COPYRIGHT`, `OFL`, and `PATENTS`, with extensions and decorations such as `LICENSE-MIT`, `MIT-LICENSE`, or `COPYING.LESSER`. Files in a `LICENSES/` directory are included too, using the [REUSE](https://reuse.software) convention of an SPDX id plus a text extension. Code, data, and image files with those names (`license.js`, `LICENSE.spdx`) are skipped. Distinct texts are joined, best match first.
 3. Nothing found: the package needs attention.
 
-With `--ci`, or when there's no terminal, the run fails after listing every package without text. On a terminal, you're prompted per package to provide a file path, paste the text (end with a line containing only `.`), use a bundled SPDX template (`MIT`, `ISC`, `BSD-2-Clause`, `BSD-3-Clause`, `0BSD`, with the copyright line taken from the package author), or skip it. Template-generated text is flagged for review in the summary.
+With `--ci`, or when there's no terminal, the run fails after listing every package without text.
+
+With `--allow-missing` (or `allowMissing` in the config) the run neither prompts nor fails, with or without a terminal. A package that declares exactly one bundled SPDX id gets that template with the copyright line taken from the package author, flagged for review in the summary. Any other package is skipped with a warning and left out of the notice. Use it when you'd rather ship a notice with a known gap than block CI, and follow up with `replace` entries or the maintainers.
+
+On a terminal without those options, you're prompted per package to provide a file path, paste the text (end with a line containing only `.`), use a bundled SPDX template (`MIT`, `ISC`, `BSD-2-Clause`, `BSD-3-Clause`, `0BSD`, with the copyright line taken from the package author), or skip it. Template-generated text is flagged for review in the summary. `--verbose` adds a note for each package that declares a license but ships no license file, with a link to ask the maintainers to add one.
 
 The declared license type never changes what's copied. It only feeds the summary chart, the "declares X" hint in prompts, and the template offer.
 

@@ -42,6 +42,11 @@ describe("validateConfig", () => {
     );
   });
 
+  it("accepts allowMissing and rejects non-boolean values", () => {
+    assert.equal(validateConfig({ allowMissing: true }, "cfg", ".").allowMissing, true);
+    assert.throws(() => validateConfig({ allowMissing: "yes" }, "cfg", "."), /allowMissing: expected a boolean/);
+  });
+
   it("accepts failOn and allow", () => {
     const config = validateConfig(
       { failOn: ["copyleft", "restricted"], allow: ["a", "b@1.0.0", "/^@types\\//"] },

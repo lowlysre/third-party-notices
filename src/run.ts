@@ -43,6 +43,7 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
   const lineEnding = args.eol ?? config.lineEnding ?? defaultLineEnding();
   const omitVersions = args.omitVersions || config.omitVersions === true;
   const overwrite = args.overwrite || config.overwrite === true;
+  const allowMissing = args.allowMissing || config.allowMissing === true;
   const prompt = args.ci ? undefined : deps.prompt;
 
   if (output !== "-" && !overwrite && (await pathExists(output))) {
@@ -95,12 +96,14 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
   }
 
   if (unresolved.length > 0) {
-    if (!prompt) {
+    if (!allowMissing && !prompt) {
       throw unresolvedError(unresolved);
     }
     for (const pkg of unresolved) {
       const label = `${pkg.name}@${pkg.version}`;
-      const answer = await reporter.suspend(() => askForLicense(prompt, pkg));
+      const answer = allowMissing
+        ? fallbackLicense(pkg)
+        : await reporter.suspend(() => askForLicense(prompt as PromptIO, pkg));
       if (answer === undefined) {
         reporter.warn(`Skipped ${label}: no license text`);
       } else {
@@ -221,12 +224,18 @@ function unresolvedError(unresolved: ResolvedPackage[]): CliError {
   return new CliError(
     `No license text found for ${unresolved.length} package${unresolved.length === 1 ? "" : "s"}:\n${[...shown, ...more].join("\n")}`,
     {
-      hint: 'supply the text with "replace" in the config file, exclude the package, run without --ci to be prompted, or ask the maintainers to ship a license file',
+      hint: 'supply the text with "replace" in the config file, exclude the package, pass --allow-missing, run without --ci to be prompted, or ask the maintainers to ship a license file',
     },
   );
 }
 
 type Answer = { text: string; generated: boolean } | undefined;
+
+/** Non-interactive handling of a package with no license text: a bundled template when one fits, else skip. */
+function fallbackLicense(pkg: ResolvedPackage): Answer {
+  const templateId = templateIdFor(pkg.license);
+  return templateId ? { text: renderTemplate(templateId, pkg.author), generated: true } : undefined;
+}
 
 async function askForLicense(io: PromptIO, pkg: ResolvedPackage): Promise<Answer> {
   const { style, symbols, output } = io;

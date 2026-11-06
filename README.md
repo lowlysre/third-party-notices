@@ -52,6 +52,7 @@ The short alias `tpn` is installed alongside `third-party-notices`.
 | `--overwrite` | Replace an existing output file without asking |
 | `--eol <lf\|crlf>` | Line endings of the output. Default: the OS default |
 | `--ci` | Never prompt. Exit 1 if a license text is missing |
+| `--allow-missing` | Don't prompt or fail for packages with no license text: use a bundled SPDX template where one fits, otherwise skip with a warning |
 | `--fail-on <categories>` | Exit 1 if a package falls in these [license review](docs/how-it-works.md#license-review) categories. Comma-separated, repeatable |
 | `--no-spinner` | Disable the animated spinner |
 | `--omit-versions` | List `name` instead of `name@version` |

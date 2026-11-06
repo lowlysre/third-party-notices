@@ -9,6 +9,7 @@ export interface Args {
   output: string | undefined;
   config: string | undefined;
   overwrite: boolean;
+  allowMissing: boolean;
   eol: "lf" | "crlf" | undefined;
   ci: boolean;
   failOn: Category[];
@@ -32,6 +33,7 @@ const OPTIONS = {
   output: { type: "string", short: "o" },
   config: { type: "string", short: "c" },
   overwrite: { type: "boolean" },
+  "allow-missing": { type: "boolean" },
   eol: { type: "string" },
   ci: { type: "boolean" },
   "fail-on": { type: "string", multiple: true },
@@ -130,6 +132,7 @@ export function parseCliArgs(argv: string[]): Args {
     output: values.output as string | undefined,
     config: values.config as string | undefined,
     overwrite: values.overwrite === true,
+    allowMissing: values["allow-missing"] === true,
     eol: eol as Args["eol"],
     ci: values.ci === true,
     failOn,
@@ -151,6 +154,7 @@ export function helpText(style: Style, columns: number): string {
     ["    --overwrite", "replace an existing output file without asking"],
     ["    --eol <lf|crlf>", "line endings of the output file (default: your OS)"],
     ["    --ci", "never prompt; exit 1 if user input would be needed"],
+    ["    --allow-missing", "don't prompt or fail for packages with no license text: use an SPDX template or skip"],
     ["    --fail-on <categories>", "exit 1 if a package falls in these license categories (copyleft, any, or a name)"],
     ["    --no-spinner", "disable the animated spinner"],
     ["    --omit-versions", 'list "pkg" instead of "pkg@1.2.3"'],

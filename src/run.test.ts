@@ -134,6 +134,50 @@ describe("run: output handling", () => {
   });
 });
 
+describe("run: --allow-missing", () => {
+  async function mixedProject(t: Parameters<typeof tempDir>[0]): Promise<string> {
+    const root = await tempDir(t);
+    await writeFiles(root, {
+      "package.json": { name: "app", dependencies: { fine: "1", templated: "1", opaque: "1" } },
+    });
+    await installPackage(root, "fine", { license: "MIT", files: { LICENSE: "Shipped text" } });
+    await installPackage(root, "templated", { license: "ISC", author: "Ada Lovelace", files: {} });
+    await installPackage(root, "opaque", { license: "Proprietary", files: {} });
+    return root;
+  }
+
+  it("uses a template where one fits and skips the rest, without failing or prompting", async (t) => {
+    const root = await mixedProject(t);
+    const h = harness(root, true);
+    await h.exec(["--ci", "--allow-missing", "-o", "-", "--eol", "lf", "--verbose"]);
+    assert.match(h.stdout(), /Shipped text/);
+    assert.match(h.stdout(), /ISC License\n\nCopyright \(c\) Ada Lovelace/);
+    assert.doesNotMatch(h.stdout(), /opaque@/);
+    assert.match(h.stderr(), /▲ templated@1\.0\.0: license text generated from an SPDX template, please review/);
+    assert.match(h.stderr(), /▲ Skipped opaque@1\.0\.0: no license text/);
+    assert.match(h.stderr(), /ℹ opaque@1\.0\.0 declares Proprietary but ships no license file/);
+    assert.equal(h.tty.output(), "", "no prompt was shown");
+  });
+
+  it("does not prompt on a terminal either, and honors allowMissing from the config", async (t) => {
+    const root = await mixedProject(t);
+    await writeFiles(root, { "third-party-notices.config.json": { allowMissing: true } });
+    const h = harness(root, true);
+    await h.exec(["-o", "-"]);
+    assert.match(h.stderr(), /Skipped opaque@1\.0\.0/);
+    assert.equal(h.tty.output(), "");
+  });
+
+  it("still fails without it", async (t) => {
+    const root = await mixedProject(t);
+    await assert.rejects(harness(root).exec(["--ci", "-o", "-"]), (error: unknown) => {
+      assert.ok(error instanceof CliError);
+      assert.match(error.hint ?? "", /--allow-missing/);
+      return true;
+    });
+  });
+});
+
 describe("run: license review", () => {
   async function reviewProject(t: Parameters<typeof tempDir>[0]): Promise<string> {
     const root = await tempDir(t);

@@ -10,6 +10,7 @@ export interface Config {
   lineEnding: "lf" | "crlf" | undefined;
   omitVersions: boolean | undefined;
   overwrite: boolean | undefined;
+  allowMissing: boolean | undefined;
   append: string[];
   replace: Record<string, string>;
   exclude: string[];
@@ -29,6 +30,7 @@ const KEYS = [
   "lineEnding",
   "omitVersions",
   "overwrite",
+  "allowMissing",
   "append",
   "replace",
   "exclude",
@@ -45,6 +47,7 @@ export function emptyConfig(): Config {
     lineEnding: undefined,
     omitVersions: undefined,
     overwrite: undefined,
+    allowMissing: undefined,
     append: [],
     replace: {},
     exclude: [],
@@ -151,7 +154,7 @@ export function validateConfig(raw: unknown, source: string, baseDir: string): C
     if (raw.lineEnding === "lf" || raw.lineEnding === "crlf") config.lineEnding = raw.lineEnding;
     else errors.push('lineEnding: expected "lf" or "crlf"');
   }
-  for (const key of ["omitVersions", "overwrite"] as const) {
+  for (const key of ["omitVersions", "overwrite", "allowMissing"] as const) {
     const value = raw[key];
     if (value !== undefined) {
       if (typeof value === "boolean") config[key] = value;

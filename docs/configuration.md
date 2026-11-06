@@ -30,6 +30,7 @@ The config is read from the first of these that exists in the working directory:
 - `lineEnding`: `lf` or `crlf`.
 - `omitVersions`: list `name` instead of `name@version`.
 - `overwrite`: replace an existing output file without asking.
+- `allowMissing`: same as `--allow-missing`, see [License text](how-it-works.md#license-text).
 - `append`: file contents added after the last license group.
 - `replace`: use the given file instead of the package's license. Keys are `name` or `name@version`.
 - `exclude`: omit packages. Entries are `name`, `name@version`, or a `/regex/flags` matched against the name.

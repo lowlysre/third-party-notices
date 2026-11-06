@@ -53,6 +53,11 @@ describe("parseCliArgs", () => {
     assert.equal(parseCliArgs(["--help"]).help, true);
   });
 
+  it("parses --allow-missing", () => {
+    assert.equal(parseCliArgs([]).allowMissing, false);
+    assert.equal(parseCliArgs(["--allow-missing"]).allowMissing, true);
+  });
+
   it("parses --verbose", () => {
     assert.equal(parseCliArgs([]).verbose, false);
     assert.equal(parseCliArgs(["--verbose"]).verbose, true);
