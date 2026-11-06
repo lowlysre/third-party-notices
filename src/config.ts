@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CliError, didYouMean } from "./errors.js";
 import { pathExists, readJson } from "./fs.js";
+import { CATEGORY_CHOICES, type Category, expandCategories } from "./policy.js";
 
 export interface Config {
   inputs: string[] | undefined;
@@ -12,6 +13,8 @@ export interface Config {
   append: string[];
   replace: Record<string, string>;
   exclude: string[];
+  failOn: Category[];
+  allow: string[];
 }
 
 export interface LoadedConfig {
@@ -20,7 +23,18 @@ export interface LoadedConfig {
   source: string | undefined;
 }
 
-const KEYS = ["inputs", "output", "lineEnding", "omitVersions", "overwrite", "append", "replace", "exclude"] as const;
+const KEYS = [
+  "inputs",
+  "output",
+  "lineEnding",
+  "omitVersions",
+  "overwrite",
+  "append",
+  "replace",
+  "exclude",
+  "failOn",
+  "allow",
+] as const;
 const CONFIG_FILES = ["third-party-notices.config.json", "third-party-notices.config.mjs"];
 export const PACKAGE_JSON_KEY = "thirdPartyNotices";
 
@@ -34,6 +48,8 @@ export function emptyConfig(): Config {
     append: [],
     replace: {},
     exclude: [],
+    failOn: [],
+    allow: [],
   };
 }
 
@@ -113,6 +129,18 @@ export function validateConfig(raw: unknown, source: string, baseDir: string): C
     if (isRegexPattern(pattern) && !compileRegex(pattern)) {
       errors.push(`exclude: invalid regular expression ${pattern}`);
     }
+  }
+  config.allow = stringArray("allow") ?? [];
+  for (const pattern of config.allow) {
+    if (isRegexPattern(pattern) && !compileRegex(pattern)) {
+      errors.push(`allow: invalid regular expression ${pattern}`);
+    }
+  }
+  const failOn = stringArray("failOn");
+  if (failOn) {
+    const categories = expandCategories(failOn);
+    if (categories) config.failOn = categories;
+    else errors.push(`failOn: expected license categories (${CATEGORY_CHOICES.join(", ")})`);
   }
 
   if (raw.output !== undefined) {

@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { didYouMean, UsageError } from "./errors.js";
+import { CATEGORY_CHOICES, type Category, expandCategories } from "./policy.js";
 import type { Style } from "./ui/ansi.js";
 import { padEnd } from "./ui/ansi.js";
 
@@ -10,6 +11,7 @@ export interface Args {
   overwrite: boolean;
   eol: "lf" | "crlf" | undefined;
   ci: boolean;
+  failOn: Category[];
   noSpinner: boolean;
   omitVersions: boolean;
   noColor: boolean;
@@ -31,6 +33,7 @@ const OPTIONS = {
   overwrite: { type: "boolean" },
   eol: { type: "string" },
   ci: { type: "boolean" },
+  "fail-on": { type: "string", multiple: true },
   "no-spinner": { type: "boolean" },
   "omit-versions": { type: "boolean" },
   "no-color": { type: "boolean" },
@@ -109,6 +112,12 @@ export function parseCliArgs(argv: string[]): Args {
     typed(key as keyof typeof OPTIONS, spec.type);
   }
 
+  const failOnValues = ((values["fail-on"] as string[] | undefined) ?? []).flatMap((value) => value.split(","));
+  const failOn = expandCategories(failOnValues);
+  if (failOn === undefined) {
+    throw new UsageError("Invalid --fail-on value", `use one or more of: ${CATEGORY_CHOICES.join(", ")}`);
+  }
+
   const eol = values.eol as string | undefined;
   if (eol !== undefined && eol !== "lf" && eol !== "crlf") {
     throw new UsageError(`Invalid --eol "${eol}"`, 'use "lf" or "crlf"');
@@ -121,6 +130,7 @@ export function parseCliArgs(argv: string[]): Args {
     overwrite: values.overwrite === true,
     eol: eol as Args["eol"],
     ci: values.ci === true,
+    failOn,
     noSpinner: values["no-spinner"] === true,
     omitVersions: values["omit-versions"] === true,
     noColor: values["no-color"] === true,
@@ -138,6 +148,7 @@ export function helpText(style: Style, columns: number): string {
     ["    --overwrite", "replace an existing output file without asking"],
     ["    --eol <lf|crlf>", "line endings of the output file (default: your OS)"],
     ["    --ci", "never prompt; exit 1 if user input would be needed"],
+    ["    --fail-on <categories>", "exit 1 if a package falls in these license categories (copyleft, any, or a name)"],
     ["    --no-spinner", "disable the animated spinner"],
     ["    --omit-versions", 'list "pkg" instead of "pkg@1.2.3"'],
     ["    --no-color", "disable colors (also honors NO_COLOR)"],

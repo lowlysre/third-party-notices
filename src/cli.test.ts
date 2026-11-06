@@ -127,6 +127,26 @@ describe("cli", () => {
     assert.ok(!text.includes("skipme"));
   });
 
+  it("flags licenses for review and exits 1 for --fail-on categories", async (t) => {
+    const root = await tempDir(t);
+    await writeFiles(root, { "package.json": { name: "app", dependencies: { copyleft: "1" } } });
+    await installPackage(root, "copyleft", { license: "GPL-3.0-only", files: { LICENSE: "GPL text" } });
+
+    const warned = await cli(root, ["--ci", "-o", "-"]);
+    assert.equal(warned.code, 0, warned.stderr);
+    assert.match(warned.stderr, /License review/);
+    assert.match(warned.stderr, /Strong copyleft\s+GPL-3\.0-only\s+copyleft@1\.0\.0/);
+
+    const failed = await cli(root, ["--ci", "-o", "-", "--fail-on", "copyleft"]);
+    assert.equal(failed.code, 1);
+    assert.match(failed.stderr, /error: 1 package in blocked license categories \(Strong copyleft\)/);
+    assert.match(failed.stdout, /GPL text/);
+
+    const bad = await cli(root, ["--fail-on", "nope"]);
+    assert.equal(bad.code, 2);
+    assert.match(bad.stderr, /Invalid --fail-on value/);
+  });
+
   it("reports usage errors with exit code 2 and a suggestion", async (t) => {
     const root = await tempDir(t);
     const result = await cli(root, ["--overwite"]);

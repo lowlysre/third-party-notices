@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CliError } from "../errors.js";
+import type { Finding } from "../policy.js";
 import { capture } from "../testing/io.js";
 import { stripAnsi } from "./ansi.js";
 import type { UiEnv } from "./env.js";
@@ -18,6 +19,7 @@ const summary = {
   outputLabel: "stdout",
   bytes: 10,
   elapsedMs: 5,
+  findings: [] as Finding[],
 };
 
 describe("ConsoleReporter steps", () => {
@@ -111,6 +113,31 @@ describe("ConsoleReporter banner", () => {
 });
 
 describe("ConsoleReporter summary", () => {
+  it("lists packages that need license review, capped, with a count of the rest", () => {
+    const { out, text } = capture();
+    const reporter = new ConsoleReporter(out, base);
+    const findings: Finding[] = [
+      { name: "evil", version: "1.0.0", license: "AGPL-3.0-only", category: "network-copyleft", id: "AGPL-3.0-only" },
+      { name: "none", version: "2.0.0", license: undefined, category: "unclear", id: "(none)" },
+      ...Array.from(
+        { length: 12 },
+        (_, i): Finding => ({
+          name: `gpl${i}`,
+          version: "1.0.0",
+          license: "GPL-3.0-only",
+          category: "strong-copyleft",
+          id: "GPL-3.0-only",
+        }),
+      ),
+    ];
+    reporter.summary({ ...summary, findings });
+    const output = text();
+    assert.match(output, /▲ License review/);
+    assert.match(output, /Network copyleft {2}AGPL-3\.0-only {2}evil@1\.0\.0/);
+    assert.match(output, /Unclear terms {5}\(none\) {9}none@2\.0\.0/);
+    assert.match(output, /… and 2 more/);
+  });
+
   it("links the output path and abbreviates long breakdowns", () => {
     const { out, text } = capture();
     const reporter = new ConsoleReporter(out, { ...base, color: true, hyperlinks: true });

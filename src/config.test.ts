@@ -42,6 +42,28 @@ describe("validateConfig", () => {
     );
   });
 
+  it("accepts failOn and allow", () => {
+    const config = validateConfig(
+      { failOn: ["copyleft", "restricted"], allow: ["a", "b@1.0.0", "/^@types\\//"] },
+      "cfg",
+      ".",
+    );
+    assert.deepEqual(config.failOn, ["weak-copyleft", "strong-copyleft", "network-copyleft", "restricted"]);
+    assert.deepEqual(config.allow, ["a", "b@1.0.0", "/^@types\\//"]);
+  });
+
+  it("rejects unknown failOn categories and invalid allow expressions", () => {
+    assert.throws(
+      () => validateConfig({ failOn: ["nope"], allow: ["/(/"] }, "cfg", "."),
+      (error: unknown) => {
+        assert.ok(error instanceof CliError);
+        assert.match(error.message, /failOn: expected license categories/);
+        assert.match(error.message, /allow: invalid regular expression/);
+        return true;
+      },
+    );
+  });
+
   it("rejects invalid exclude regular expressions", () => {
     assert.throws(() => validateConfig({ exclude: ["/(/"] }, "cfg", "."), /invalid regular expression/);
   });

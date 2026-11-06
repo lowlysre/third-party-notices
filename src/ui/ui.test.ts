@@ -125,6 +125,7 @@ describe("ConsoleReporter", () => {
       outputLabel: "stdout",
       bytes: 1,
       elapsedMs: 1,
+      findings: [],
     });
     assert.equal(text(), "");
   });
@@ -157,6 +158,7 @@ describe("ConsoleReporter", () => {
       outputLabel: "NOTICE.txt",
       bytes: 2048,
       elapsedMs: 1500,
+      findings: [],
     });
     const output = text();
     assert.match(output, /Wrote NOTICE\.txt 2\.0 KB · 1\.5s/);

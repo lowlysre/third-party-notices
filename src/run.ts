@@ -5,6 +5,7 @@ import { CliError } from "./errors.js";
 import { pathExists, readText } from "./fs.js";
 import { groupLicenses, type LicensedPackage } from "./group.js";
 import { writeFileAtomic } from "./output.js";
+import { CATEGORIES, CATEGORY_LABELS, type Category, type Finding, reviewLicense } from "./policy.js";
 import { defaultLineEnding, renderDocument } from "./render.js";
 import { readLicense } from "./resolve/license.js";
 import { renderTemplate, templateIdFor } from "./resolve/templates.js";
@@ -111,6 +112,9 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
     reporter.warn(`${label}: license text generated from an SPDX template, please review`);
   }
 
+  const findings = reviewPackages(packages, config.allow);
+  const blocked = new Set<Category>([...args.failOn, ...config.failOn]);
+
   const rendering = reporter.step("Writing notices");
   let document: string;
   try {
@@ -132,11 +136,45 @@ export async function run(args: Args, deps: RunDeps): Promise<void> {
       outputLabel: output === "-" ? "stdout" : relative(cwd, output) || output,
       bytes: Buffer.byteLength(document),
       elapsedMs: Date.now() - startedAt,
+      findings,
     });
   } catch (error) {
     rendering.fail();
     throw error;
   }
+
+  const failing = findings.filter((finding) => blocked.has(finding.category));
+  if (failing.length > 0) {
+    throw policyError(failing);
+  }
+}
+
+/** Flags packages by declared license, most severe first. `allow` patterns suppress a package. */
+function reviewPackages(packages: ResolvedPackage[], allow: string[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const pkg of packages) {
+    if (allow.some((pattern) => matchesPackage(pattern, pkg.name, pkg.version))) {
+      continue;
+    }
+    const review = reviewLicense(pkg.license);
+    if (review) {
+      findings.push({ name: pkg.name, version: pkg.version, license: pkg.license, ...review });
+    }
+  }
+  const severity = (finding: Finding): number => CATEGORIES.indexOf(finding.category);
+  return findings.sort(
+    (a, b) => severity(b) - severity(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) || (a.name < b.name ? -1 : 1),
+  );
+}
+
+function policyError(failing: Finding[]): CliError {
+  const categories = [...new Set(failing.map((finding) => CATEGORY_LABELS[finding.category]))].join(", ");
+  const shown = failing.slice(0, 5).map((finding) => `  - ${finding.name}@${finding.version} (${finding.id})`);
+  const more = failing.length > shown.length ? [`  …and ${failing.length - shown.length} more`] : [];
+  return new CliError(
+    `${failing.length} package${failing.length === 1 ? "" : "s"} in blocked license categories (${categories}):\n${[...shown, ...more].join("\n")}`,
+    { hint: 'review them, or list them under "allow" in the config file' },
+  );
 }
 
 async function readLicenseFor(

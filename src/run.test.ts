@@ -133,6 +133,73 @@ describe("run: output handling", () => {
   });
 });
 
+describe("run: license review", () => {
+  async function reviewProject(t: Parameters<typeof tempDir>[0]): Promise<string> {
+    const root = await tempDir(t);
+    await writeFiles(root, {
+      "package.json": { name: "app", dependencies: { fine: "1", gpl: "1", agpl: "1", nolicense: "1" } },
+    });
+    await installPackage(root, "fine", { license: "MIT", files: { LICENSE: "MIT text" } });
+    await installPackage(root, "gpl", { license: "GPL-3.0-only", files: { LICENSE: "GPL text" } });
+    await installPackage(root, "agpl", { license: "AGPL-3.0-only", files: { LICENSE: "AGPL text" } });
+    await installPackage(root, "nolicense", { files: { LICENSE: "Custom text" } });
+    return root;
+  }
+
+  it("lists flagged packages in the summary, most severe first, and still exits cleanly", async (t) => {
+    const root = await reviewProject(t);
+    const h = harness(root);
+    await h.exec(["--ci", "-o", "-"]);
+    const out = h.stderr();
+    assert.match(out, /▲ License review/);
+    assert.ok(out.indexOf("agpl@1.0.0") < out.indexOf("gpl@1.0.0"));
+    assert.match(out, /Unclear terms/);
+    assert.doesNotMatch(out, /fine@1\.0\.0/);
+  });
+
+  it("fails after writing when a blocked category is present", async (t) => {
+    const root = await reviewProject(t);
+    const h = harness(root);
+    await assert.rejects(
+      h.exec(["--ci", "-o", "out.txt", "--fail-on", "strong-copyleft,network-copyleft"]),
+      (error: unknown) => {
+        assert.ok(error instanceof CliError);
+        assert.match(error.message, /2 packages in blocked license categories \(Network copyleft, Strong copyleft\)/);
+        assert.match(error.message, /agpl@1\.0\.0 \(AGPL-3\.0-only\)/);
+        assert.match(error.hint ?? "", /"allow"/);
+        return true;
+      },
+    );
+    assert.match(await readFile(join(root, "out.txt"), "utf8"), /GPL text/);
+  });
+
+  it("uses failOn and allow from the config", async (t) => {
+    const root = await reviewProject(t);
+    await writeFiles(root, {
+      "third-party-notices.config.json": { failOn: ["any"], allow: ["gpl", "/^agpl$/", "nolicense@1.0.0"] },
+    });
+    const h = harness(root);
+    await h.exec(["--ci", "-o", "-"]);
+    assert.doesNotMatch(h.stderr(), /License review/);
+
+    await writeFiles(root, { "third-party-notices.config.json": { failOn: ["unclear"], allow: ["gpl"] } });
+    await assert.rejects(
+      harness(root).exec(["--ci", "-o", "-"]),
+      /1 package in blocked license categories \(Unclear terms\)/,
+    );
+  });
+
+  it("names the remaining count when more than five packages are blocked", async (t) => {
+    const root = await tempDir(t);
+    const deps = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`gpl${i}`, "1"]));
+    await writeFiles(root, { "package.json": { name: "app", dependencies: deps } });
+    for (const name of Object.keys(deps)) {
+      await installPackage(root, name, { license: "GPL-2.0-only", files: { LICENSE: "GPL" } });
+    }
+    await assert.rejects(harness(root).exec(["--ci", "-o", "-", "--fail-on", "copyleft"]), /…and 2 more/);
+  });
+});
+
 describe("run: interactive license prompts", () => {
   const HOW = /How should this be handled\?/;
 

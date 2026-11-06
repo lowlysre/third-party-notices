@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { CliError } from "../errors.js";
+import { CATEGORY_LABELS, type Finding } from "../policy.js";
 import { createStyle, cursor, padEnd, type Style, truncate } from "./ansi.js";
 import { renderBanner } from "./banner.js";
 import type { UiEnv } from "./env.js";
@@ -22,6 +23,8 @@ export interface SummaryData {
   outputLabel: string;
   bytes: number;
   elapsedMs: number;
+  /** Packages whose declared license is worth a human review, most severe first. */
+  findings: Finding[];
 }
 
 export interface Reporter {
@@ -45,6 +48,7 @@ export interface ReporterOptions {
 }
 
 const FRAME_MS = 80;
+const MAX_FINDINGS = 12;
 
 export class ConsoleReporter implements Reporter {
   readonly style: Style;
@@ -133,6 +137,23 @@ export class ConsoleReporter implements Reporter {
       const hidden = data.breakdown.length - top.length;
       if (hidden > 0) {
         lines.push(`  ${style.dim(`${symbols.ellipsis} and ${hidden} more`)}`);
+      }
+    }
+
+    if (data.findings.length > 0) {
+      lines.push("");
+      lines.push(`  ${style.yellow(symbols.warn)} ${style.bold("License review")}`);
+      const shown = data.findings.slice(0, MAX_FINDINGS);
+      const labelWidth = Math.max(...shown.map((f) => CATEGORY_LABELS[f.category].length));
+      const idWidth = Math.min(28, Math.max(...shown.map((f) => f.id.length)));
+      for (const finding of shown) {
+        const id = padEnd(truncate(finding.id, idWidth), idWidth);
+        lines.push(
+          `    ${style.yellow(padEnd(CATEGORY_LABELS[finding.category], labelWidth))}  ${id}  ${style.dim(`${finding.name}@${finding.version}`)}`,
+        );
+      }
+      if (data.findings.length > shown.length) {
+        lines.push(`    ${style.dim(`${symbols.ellipsis} and ${data.findings.length - shown.length} more`)}`);
       }
     }
 

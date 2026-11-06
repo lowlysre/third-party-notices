@@ -33,6 +33,8 @@ The config is read from the first of these that exists in the working directory:
 - `append`: file contents added after the last license group.
 - `replace`: use the given file instead of the package's license. Keys are `name` or `name@version`.
 - `exclude`: omit packages. Entries are `name`, `name@version`, or a `/regex/flags` matched against the name.
+- `failOn`: license review categories that make the run exit 1, for example `["copyleft"]`. See [License review](how-it-works.md#license-review).
+- `allow`: packages to leave out of the license review. Entries use the same forms as `exclude`.
 
 ## Rules
 

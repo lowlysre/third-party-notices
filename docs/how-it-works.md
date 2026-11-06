@@ -22,6 +22,22 @@ With `--ci`, or when there's no terminal, the run fails after listing every pack
 
 The declared license type never changes what's copied. It only feeds the summary chart, the "declares X" hint in prompts, and the template offer.
 
+## License review
+
+A notice file only covers attribution. After writing it, the tool checks each package's declared `license` field and lists the ones whose terms usually need a human decision under "License review" in the summary. It's a signal, not legal advice, and the file is written either way.
+
+| Category | Examples |
+| --- | --- |
+| `weak-copyleft` | `LGPL-*`, `MPL-*`, `EPL-*`, `CDDL-*`, `EUPL-*`, `CPL-*`, `MS-RL`, `CECILL-*`, and `GPL-*` with a linking exception |
+| `strong-copyleft` | `GPL-*`, `CC-BY-SA-*` |
+| `network-copyleft` | `AGPL-*`, `SSPL-1.0` |
+| `restricted` | `BUSL-*`, `Elastic-*`, `PolyForm-*`, `CC-BY-NC-*`, `CC-BY-ND-*`, `Commons-Clause`, `JSON` |
+| `unclear` | `UNLICENSED`, `NONE`, `UNKNOWN`, `SEE LICENSE IN ...`, `LicenseRef-*`, a missing field, or text that isn't a valid SPDX expression |
+
+SPDX expressions are evaluated: `MIT OR GPL-3.0-only` is not flagged because you can take the MIT option, while `MIT AND GPL-3.0-only` is flagged as strong copyleft because both apply. The declared field is what's checked, not the license file's text.
+
+Two options turn the review into a gate. `--fail-on <categories>` (or `failOn` in the config) makes the run exit 1 after writing the file when a package falls in a listed category. Categories can be named individually, or use `copyleft` for the three copyleft categories and `any` for all of them. `allow` in the config leaves specific packages out of the review once you've accepted them.
+
 ## Output format
 
 The document lists each group of packages followed by their shared license text, with `NOTICE` files appended under "With the following notices:". Groups and packages are sorted, so the same input produces the same bytes on every OS for a given `--eol`.
